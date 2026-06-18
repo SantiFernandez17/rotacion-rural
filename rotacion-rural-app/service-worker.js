@@ -1,4 +1,4 @@
-const CACHE_NAME = "rotacion-rural-v1";
+const CACHE_NAME = "rotacion-rural-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -6,10 +6,9 @@ const ASSETS = [
   "./app.js",
   "./manifest.webmanifest",
   "./assets/hero-rotacion-rural.png",
-  "./assets/icon.svg",
-  "./assets/icon-180.png",
-  "./assets/icon-192.png",
-  "./assets/icon-512.png"
+  "./assets/icon-180-v2.png",
+  "./assets/icon-192-v2.png",
+  "./assets/icon-512-v2.png"
 ];
 
 self.addEventListener("install", (event) => {

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f6eee4" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Rotacion" />
+    <meta name="description" content="Companera offline para una rotacion rural: checklist, diario, agenda, contactos y mensajes." />
+    <title>Rotacion rural</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="assets/icon-180.png" />
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <img class="hero__image" src="assets/hero-rotacion-rural.png" alt="" />
+        <div class="hero__content">
+          <p class="eyebrow">Rotacion rural</p>
+          <h1>Para que tengas todo a mano</h1>
+          <p>Santiago del Estero, checklist, agenda, diario y contactos sin depender de internet.</p>
+        </div>
+      </header>
+
+      <main id="app" class="content" aria-live="polite"></main>
+
+      <nav class="bottom-nav" aria-label="Secciones">
+        <button class="nav-button is-active" data-tab="home" aria-label="Inicio" title="Inicio">
+          <span aria-hidden="true">⌂</span>
+          <small>Inicio</small>
+        </button>
+        <button class="nav-button" data-tab="checklist" aria-label="Checklist" title="Checklist">
+          <span aria-hidden="true">✓</span>
+          <small>Lista</small>
+        </button>
+        <button class="nav-button" data-tab="diary" aria-label="Diario" title="Diario">
+          <span aria-hidden="true">✎</span>
+          <small>Diario</small>
+        </button>
+        <button class="nav-button" data-tab="love" aria-label="Mensajes" title="Mensajes">
+          <span aria-hidden="true">♡</span>
+          <small>Mensajes</small>
+        </button>
+        <button class="nav-button" data-tab="contacts" aria-label="Contactos" title="Contactos">
+          <span aria-hidden="true">☎</span>
+          <small>SOS</small>
+        </button>
+        <button class="nav-button" data-tab="agenda" aria-label="Agenda" title="Agenda">
+          <span aria-hidden="true">◷</span>
+          <small>Agenda</small>
+        </button>
+      </nav>
+    </div>
+
+    <template id="empty-state">
+      <div class="empty-state">
+        <strong></strong>
+        <p></p>
+      </div>
+    </template>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>

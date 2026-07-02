@@ -8,7 +8,7 @@ region = "us-east-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 disable_rollback = true
-parameter_overrides = "FrontendUrl=\"https://rotacion.santuli.org\" LocalUrl=\"http://localhost:4174\" UserPoolDomainPrefix=\"rotacion-rural-santi-871470318827\""
+parameter_overrides = "FrontendUrl=\"https://rotacion-rural.santuli.org\" LocalUrl=\"http://localhost:4174\" UserPoolDomainPrefix=\"rotacion-rural-santi-871470318827\""
 image_repositories = []
 
 [default.global.parameters]

@@ -5,7 +5,7 @@ Description: Backend AWS para Rotacion Rural con Cognito, API Gateway, Lambda y 
 Parameters:
   FrontendUrl:
     Type: String
-    Default: https://rotacion.santuli.org
+    Default: https://rotacion-rural.santuli.org
   LocalUrl:
     Type: String
     Default: http://localhost:4174

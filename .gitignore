@@ -1,2 +1,4 @@
 aws/.aws-sam/
 node_modules/
+.cloudflare-deploy/
+.wrangler/

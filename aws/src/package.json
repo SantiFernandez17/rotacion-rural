@@ -1,0 +1,10 @@
+{
+  "name": "rotacion-rural-state-api",
+  "version": "1.0.0",
+  "private": true,
+  "main": "state.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0"
+  }
+}

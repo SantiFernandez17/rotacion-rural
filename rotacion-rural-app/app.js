@@ -1,4 +1,7 @@
 const STORAGE_KEY = "rotacionRuralApp:v1";
+const AUTH_STORAGE_KEY = "rotacionRuralApp:awsAuth:v1";
+const PKCE_STORAGE_KEY = "rotacionRuralApp:pkce:v1";
+const awsConfig = window.ROTACION_AWS_CONFIG || { enabled: false };
 
 const seedData = {
   profile: {
@@ -59,6 +62,16 @@ const seedData = {
 let state = loadState();
 let activeTab = "home";
 let checklistFilter = "all";
+let cloudStatus = {
+  enabled: Boolean(awsConfig.enabled),
+  signedIn: false,
+  email: "",
+  syncing: false,
+  lastSync: "",
+  updatedBy: "",
+  error: ""
+};
+let saveTimer = null;
 
 const app = document.querySelector("#app");
 const navButtons = [...document.querySelectorAll(".nav-button")];
@@ -81,6 +94,7 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+initCloudSync();
 render();
 
 function item(id, category, text, done = false) {
@@ -112,6 +126,7 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  queueCloudSave();
 }
 
 function clone(value) {
@@ -140,6 +155,7 @@ function renderHome() {
 
   return `
     ${sectionHead("Hola, ${escapeHtml(state.profile.name)}", "Un tablero corto para mirar antes de salir, durante la guardia o cuando no haya internet.")}
+    ${renderCloudPanel()}
     <section class="grid three">
       ${stat(`${progress.percent}%`, "Checklist listo", progress.percent)}
       ${stat(pending, "Cosas pendientes", progress.percent)}
@@ -185,6 +201,47 @@ function renderHome() {
         <p>${primaryContact ? escapeHtml(primaryContact.role || primaryContact.phone) : "Carga al menos un numero importante para llamar desde la app."}</p>
         ${primaryContact ? `<a class="button secondary full" href="tel:${cleanPhone(primaryContact.phone)}">☎ Llamar</a>` : ""}
       </article>
+    </section>
+  `;
+}
+
+function renderCloudPanel() {
+  if (!cloudStatus.enabled) {
+    return `
+      <section class="sync-panel">
+        <div>
+          <strong>Modo local</strong>
+          <p>La app esta lista para AWS. Falta cargar la configuracion en aws-config.js.</p>
+        </div>
+      </section>
+    `;
+  }
+
+  if (!cloudStatus.signedIn) {
+    return `
+      <section class="sync-panel">
+        <div>
+          <strong>Nube AWS</strong>
+          <p>Inicia sesion para sincronizar checklist, diario, agenda y contactos.</p>
+          ${cloudStatus.error ? `<p class="sync-error">${escapeHtml(cloudStatus.error)}</p>` : ""}
+        </div>
+        <button class="button" data-login>Iniciar sesion</button>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="sync-panel">
+      <div>
+        <strong>${escapeHtml(cloudStatus.email || "Sesion activa")}</strong>
+        <p>${cloudStatus.syncing ? "Sincronizando..." : cloudStatus.lastSync ? `Ultima sincronizacion: ${formatDateTime(cloudStatus.lastSync)}` : "Sesion iniciada."}</p>
+        ${cloudStatus.updatedBy ? `<p class="muted">Ultimo cambio: ${escapeHtml(cloudStatus.updatedBy)}</p>` : ""}
+        ${cloudStatus.error ? `<p class="sync-error">${escapeHtml(cloudStatus.error)}</p>` : ""}
+      </div>
+      <div class="sync-actions">
+        <button class="button secondary" data-sync-now>Sincronizar</button>
+        <button class="button ghost" data-logout>Salir</button>
+      </div>
     </section>
   `;
 }
@@ -489,6 +546,21 @@ function handleClick(event) {
   const target = event.target.closest("button");
   if (!target) return;
 
+  if (target.dataset.login !== undefined) {
+    startLogin();
+    return;
+  }
+
+  if (target.dataset.logout !== undefined) {
+    logout();
+    return;
+  }
+
+  if (target.dataset.syncNow !== undefined) {
+    syncFromCloud();
+    return;
+  }
+
   if (target.dataset.go) {
     activeTab = target.dataset.go;
     navButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.tab === activeTab));
@@ -592,6 +664,16 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function formatDateTime(value) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
 function formatDate(value) {
   if (!value) return "";
   return new Intl.DateTimeFormat("es-AR", {
@@ -616,4 +698,276 @@ function escapeHtml(value = "") {
 
 function escapeAttr(value = "") {
   return escapeHtml(value).replaceAll("`", "&#096;");
+}
+
+async function initCloudSync() {
+  if (!cloudStatus.enabled || !isAwsConfigReady()) return;
+
+  try {
+    await finishLoginIfNeeded();
+    const session = getSession();
+    if (!session) return;
+
+    cloudStatus.signedIn = true;
+    cloudStatus.email = session.email || "";
+    await syncFromCloud();
+  } catch (error) {
+    cloudStatus.error = error.message || "No se pudo iniciar la sincronizacion.";
+    render();
+  }
+}
+
+function isAwsConfigReady() {
+  return Boolean(
+    awsConfig.cognitoDomain &&
+      awsConfig.userPoolClientId &&
+      awsConfig.apiBaseUrl &&
+      awsConfig.redirectUri
+  );
+}
+
+async function startLogin() {
+  if (!isAwsConfigReady()) {
+    cloudStatus.error = "Falta completar aws-config.js con los outputs de AWS.";
+    render();
+    return;
+  }
+
+  const verifier = base64Url(crypto.getRandomValues(new Uint8Array(32)));
+  const challenge = await sha256Base64Url(verifier);
+  const loginState = uid();
+  sessionStorage.setItem(PKCE_STORAGE_KEY, JSON.stringify({ verifier, state: loginState }));
+
+  const params = new URLSearchParams({
+    client_id: awsConfig.userPoolClientId,
+    response_type: "code",
+    scope: "openid email profile",
+    redirect_uri: getRedirectUri(),
+    code_challenge_method: "S256",
+    code_challenge: challenge,
+    state: loginState
+  });
+
+  window.location.assign(`${trimSlash(awsConfig.cognitoDomain)}/oauth2/authorize?${params}`);
+}
+
+async function finishLoginIfNeeded() {
+  const url = new URL(window.location.href);
+  const code = url.searchParams.get("code");
+  const returnedState = url.searchParams.get("state");
+  if (!code) return;
+
+  const pkce = JSON.parse(sessionStorage.getItem(PKCE_STORAGE_KEY) || "null");
+  sessionStorage.removeItem(PKCE_STORAGE_KEY);
+  clearOAuthParams(url);
+
+  if (!pkce?.verifier || pkce.state !== returnedState) {
+    throw new Error("La respuesta de login no pudo validarse.");
+  }
+
+  const params = new URLSearchParams({
+    grant_type: "authorization_code",
+    client_id: awsConfig.userPoolClientId,
+    code,
+    redirect_uri: getRedirectUri(),
+    code_verifier: pkce.verifier
+  });
+
+  const tokens = await tokenRequest(params);
+  saveSession(tokens);
+}
+
+function clearOAuthParams(url) {
+  url.searchParams.delete("code");
+  url.searchParams.delete("state");
+  window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+}
+
+async function tokenRequest(params) {
+  const response = await fetch(`${trimSlash(awsConfig.cognitoDomain)}/oauth2/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: params.toString()
+  });
+
+  if (!response.ok) {
+    throw new Error("Cognito no devolvio una sesion valida.");
+  }
+
+  return response.json();
+}
+
+function saveSession(tokens) {
+  const claims = parseJwt(tokens.id_token);
+  const session = {
+    idToken: tokens.id_token,
+    refreshToken: tokens.refresh_token || getSession()?.refreshToken || "",
+    expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000,
+    email: claims.email || ""
+  };
+
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  cloudStatus.signedIn = true;
+  cloudStatus.email = session.email;
+}
+
+function getSession() {
+  try {
+    const session = JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || "null");
+    return session?.idToken ? session : null;
+  } catch {
+    return null;
+  }
+}
+
+async function getValidIdToken() {
+  const session = getSession();
+  if (!session) return "";
+
+  if (Date.now() < session.expiresAt - 60000) {
+    return session.idToken;
+  }
+
+  if (!session.refreshToken) {
+    logout(false);
+    return "";
+  }
+
+  const tokens = await tokenRequest(
+    new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: awsConfig.userPoolClientId,
+      refresh_token: session.refreshToken
+    })
+  );
+  saveSession(tokens);
+  return getSession()?.idToken || "";
+}
+
+async function syncFromCloud() {
+  if (!cloudStatus.enabled || !getSession()) return;
+
+  cloudStatus.syncing = true;
+  cloudStatus.error = "";
+  render();
+
+  try {
+    const token = await getValidIdToken();
+    const response = await fetch(`${trimSlash(awsConfig.apiBaseUrl)}/state`, {
+      headers: { authorization: `Bearer ${token}` }
+    });
+
+    if (!response.ok) throw new Error("No se pudo leer la nube AWS.");
+
+    const data = await response.json();
+    if (data.state) {
+      state = { ...clone(seedData), ...data.state };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } else {
+      await saveStateToCloud();
+    }
+
+    cloudStatus.lastSync = data.updatedAt || new Date().toISOString();
+    cloudStatus.updatedBy = data.updatedBy || "";
+  } catch (error) {
+    cloudStatus.error = error.message || "Fallo la sincronizacion.";
+  } finally {
+    cloudStatus.syncing = false;
+    render();
+  }
+}
+
+function queueCloudSave() {
+  if (!cloudStatus.enabled || !getSession()) return;
+
+  window.clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(() => {
+    saveStateToCloud();
+  }, 700);
+}
+
+async function saveStateToCloud() {
+  if (!cloudStatus.enabled || !getSession()) return;
+
+  cloudStatus.syncing = true;
+  cloudStatus.error = "";
+  render();
+
+  try {
+    const token = await getValidIdToken();
+    const response = await fetch(`${trimSlash(awsConfig.apiBaseUrl)}/state`, {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ state })
+    });
+
+    if (!response.ok) throw new Error("No se pudo guardar en AWS.");
+
+    const data = await response.json();
+    cloudStatus.lastSync = data.updatedAt || new Date().toISOString();
+    cloudStatus.updatedBy = data.updatedBy || cloudStatus.email;
+  } catch (error) {
+    cloudStatus.error = error.message || "Fallo el guardado en AWS.";
+  } finally {
+    cloudStatus.syncing = false;
+    render();
+  }
+}
+
+function logout(redirect = true) {
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+  cloudStatus.signedIn = false;
+  cloudStatus.email = "";
+  cloudStatus.lastSync = "";
+  cloudStatus.updatedBy = "";
+  cloudStatus.error = "";
+
+  if (redirect && isAwsConfigReady()) {
+    const params = new URLSearchParams({
+      client_id: awsConfig.userPoolClientId,
+      logout_uri: getLogoutUri()
+    });
+    window.location.assign(`${trimSlash(awsConfig.cognitoDomain)}/logout?${params}`);
+    return;
+  }
+
+  render();
+}
+
+function parseJwt(token = "") {
+  const payload = token.split(".")[1];
+  if (!payload) return {};
+  try {
+    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return {};
+  }
+}
+
+async function sha256Base64Url(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return base64Url(new Uint8Array(digest));
+}
+
+function base64Url(bytes) {
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function getRedirectUri() {
+  return awsConfig.redirectUri || `${window.location.origin}${window.location.pathname}`;
+}
+
+function getLogoutUri() {
+  return awsConfig.logoutUri || getRedirectUri();
+}
+
+function trimSlash(value = "") {
+  return value.replace(/\/$/, "");
 }

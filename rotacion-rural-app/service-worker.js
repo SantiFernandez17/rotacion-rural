@@ -1,9 +1,10 @@
-const CACHE_NAME = "rotacion-rural-v2";
+const CACHE_NAME = "rotacion-rural-v3";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./aws-config.js",
   "./manifest.webmanifest",
   "./assets/hero-rotacion-rural.png",
   "./assets/icon-180-v2.png",

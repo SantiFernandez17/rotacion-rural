@@ -210,6 +210,42 @@ h1 {
   margin-bottom: 14px;
 }
 
+.sync-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 13px;
+  border: 1px solid rgba(129, 106, 78, 0.2);
+  border-radius: var(--radius);
+  background: rgba(255, 250, 242, 0.9);
+  box-shadow: var(--shadow);
+}
+
+.sync-panel strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.sync-panel p {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.sync-error {
+  margin-top: 5px;
+  color: var(--danger) !important;
+  font-weight: 750;
+}
+
+.sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .row {
   justify-content: space-between;
 }
@@ -514,6 +550,19 @@ details.form-panel summary {
 
   .toolbar {
     align-items: stretch;
+  }
+
+  .sync-panel {
+    display: grid;
+  }
+
+  .sync-actions,
+  .sync-panel > .button {
+    width: 100%;
+  }
+
+  .sync-actions .button {
+    flex: 1 1 130px;
   }
 
   .segmented {

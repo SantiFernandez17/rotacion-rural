@@ -1,0 +1,160 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Backend AWS para Rotacion Rural con Cognito, API Gateway, Lambda y DynamoDB.
+
+Parameters:
+  FrontendUrl:
+    Type: String
+    Default: https://rotacion.santuli.org
+  LocalUrl:
+    Type: String
+    Default: http://localhost:4174
+  UserPoolDomainPrefix:
+    Type: String
+    Description: Prefijo unico global para el dominio Hosted UI de Cognito.
+  AllowedEmails:
+    Type: String
+    Default: ""
+    Description: Emails permitidos separados por coma. Si queda vacio, cualquier usuario del User Pool autenticado puede usar la API.
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Architectures:
+      - x86_64
+    Timeout: 10
+    MemorySize: 256
+
+Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: rotacion-rural-users
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref UserPoolDomainPrefix
+      UserPoolId: !Ref UserPool
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: rotacion-rural-web
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      CallbackURLs:
+        - !Ref FrontendUrl
+        - !Sub "${FrontendUrl}/"
+        - !Ref LocalUrl
+        - !Sub "${LocalUrl}/"
+      LogoutURLs:
+        - !Ref FrontendUrl
+        - !Sub "${FrontendUrl}/"
+        - !Ref LocalUrl
+        - !Sub "${LocalUrl}/"
+
+  StateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: rotacion-rural-state
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  StateApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref FrontendUrl
+          - !Ref LocalUrl
+        AllowHeaders:
+          - authorization
+          - content-type
+        AllowMethods:
+          - GET
+          - PUT
+          - OPTIONS
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: "$request.header.Authorization"
+            JwtConfiguration:
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+              audience:
+                - !Ref UserPoolClient
+
+  StateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: state.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref StateTable
+          STATE_ID: rotacion-rural-main
+          ALLOWED_EMAILS: !Ref AllowedEmails
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StateTable
+      Events:
+        GetState:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StateApi
+            Path: /state
+            Method: GET
+        PutState:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StateApi
+            Path: /state
+            Method: PUT
+
+Outputs:
+  ApiBaseUrl:
+    Description: URL base de la API.
+    Value: !Sub "https://${StateApi}.execute-api.${AWS::Region}.amazonaws.com"
+  CognitoDomain:
+    Description: Dominio Hosted UI de Cognito.
+    Value: !Sub "https://${UserPoolDomainPrefix}.auth.${AWS::Region}.amazoncognito.com"
+  UserPoolId:
+    Description: ID del User Pool.
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: ID del cliente web de Cognito.
+    Value: !Ref UserPoolClient
+  Region:
+    Description: Region AWS.
+    Value: !Ref AWS::Region

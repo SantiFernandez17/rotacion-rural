@@ -35,7 +35,7 @@ Valores sugeridos en `sam deploy --guided`:
 - AWS Region: `us-east-1`
 - FrontendUrl: `https://rotacion.santuli.org`
 - LocalUrl: `http://localhost:4174`
-- UserPoolDomainPrefix: algo unico, por ejemplo `rotacion-rural-santi-2026`
+- UserPoolDomainPrefix: algo unico, por ejemplo `rotacion-rural-santi-871470318827`
 - AllowedEmails: tu mail y el de ella separados por coma
 
 Ejemplo:

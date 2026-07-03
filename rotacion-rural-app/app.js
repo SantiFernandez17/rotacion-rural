@@ -1,6 +1,7 @@
 const STORAGE_KEY = "rotacionRuralApp:v1";
 const AUTH_STORAGE_KEY = "rotacionRuralApp:awsAuth:v1";
 const PKCE_STORAGE_KEY = "rotacionRuralApp:pkce:v1";
+const ROTATION_END_DATE = "2026-08-28";
 const awsConfig = window.ROTACION_AWS_CONFIG || { enabled: false };
 
 const seedData = {
@@ -8,7 +9,7 @@ const seedData = {
     name: "Mi doctora",
     destination: "Santiago del Estero",
     startDate: "2026-07-01",
-    endDate: "2026-07-31",
+    endDate: ROTATION_END_DATE,
     signature: "Santi"
   },
   checklist: [
@@ -115,12 +116,12 @@ function uid() {
 
 function loadState() {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return clone(seedData);
+  if (!raw) return normalizeState(seedData);
 
   try {
-    return { ...clone(seedData), ...JSON.parse(raw) };
+    return normalizeState(JSON.parse(raw));
   } catch {
-    return clone(seedData);
+    return normalizeState(seedData);
   }
 }
 
@@ -131,6 +132,21 @@ function saveState() {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeState(value) {
+  const source = value && typeof value === "object" ? value : {};
+  const normalized = {
+    ...clone(seedData),
+    ...clone(source),
+    profile: {
+      ...clone(seedData.profile),
+      ...(source.profile || {})
+    }
+  };
+
+  normalized.profile.endDate = ROTATION_END_DATE;
+  return normalized;
 }
 
 function render() {
@@ -147,19 +163,18 @@ function render() {
 }
 
 function renderHome() {
-  const progress = checklistProgress(state.checklist);
-  const pending = state.checklist.length - progress.done;
   const nextEvent = getNextEvent();
   const lastEntry = [...state.diary].sort((a, b) => b.date.localeCompare(a.date))[0];
   const primaryContact = state.contacts.find((entry) => entry.phone);
+  const unopenedMessages = state.messages.filter((message) => !message.opened).length;
 
   return `
-    ${sectionHead("Hola, ${escapeHtml(state.profile.name)}", "Un tablero corto para mirar antes de salir, durante la guardia o cuando no haya internet.")}
+    ${sectionHead("Hola, ${escapeHtml(state.profile.name)}", "Un tablero corto para acompanar la rotacion, escribir lo vivido y tener lo importante a mano.")}
     ${renderCloudPanel()}
     <section class="grid three">
-      ${stat(`${progress.percent}%`, "Checklist listo", progress.percent)}
-      ${stat(pending, "Cosas pendientes", progress.percent)}
-      ${stat(daysLeft(), "Dias de rotacion", 100)}
+      ${stat(daysLeft(), "Dias hasta el 28/08", rotationProgress())}
+      ${stat(state.diary.length, "Entradas de diario", Math.min(state.diary.length * 12, 100))}
+      ${stat(unopenedMessages, "Mensajes por abrir", messageProgress())}
     </section>
     <section class="grid two" style="margin-top: 14px;">
       <article class="card entry">
@@ -186,11 +201,11 @@ function renderHome() {
       </article>
       <article class="card entry">
         <div class="row">
-          <span class="pill">Rapido</span>
-          <button class="button ghost" data-go="checklist">Faltantes</button>
+          <span class="pill">Mensajes</span>
+          <button class="button ghost" data-go="love">Abrir</button>
         </div>
-        <h3>${pending ? `Quedan ${pending} pendientes` : "Todo marcado"}</h3>
-        <p>${pending ? "Usa el filtro de pendientes para cerrar la valija sin repasar toda la lista." : "Checklist completo. Igual conviene revisar documentos antes de salir."}</p>
+        <h3>${unopenedMessages ? `${unopenedMessages} por abrir` : "Todos abiertos"}</h3>
+        <p>${unopenedMessages ? "Hay cartas cortas para cuando necesite una pausa, un mimo o cerrar un dia largo." : "Podes agregarle un mensaje nuevo para que aparezca aca."}</p>
       </article>
       <article class="card entry">
         <div class="row">
@@ -222,7 +237,7 @@ function renderCloudPanel() {
       <section class="sync-panel">
         <div>
           <strong>Nube AWS</strong>
-          <p>Inicia sesion para sincronizar checklist, diario, agenda y contactos.</p>
+          <p>Inicia sesion para sincronizar diario, mensajes, agenda y contactos.</p>
           ${cloudStatus.error ? `<p class="sync-error">${escapeHtml(cloudStatus.error)}</p>` : ""}
         </div>
         <button class="button" data-login>Iniciar sesion</button>
@@ -653,6 +668,21 @@ function daysLeft() {
   return Math.max(diff, 0);
 }
 
+function rotationProgress() {
+  const start = new Date(`${state.profile.startDate}T00:00:00`);
+  const end = new Date(`${state.profile.endDate}T00:00:00`);
+  const today = new Date();
+  const total = Math.max(end - start, 1);
+  const elapsed = Math.min(Math.max(today - start, 0), total);
+  return Math.round((elapsed / total) * 100);
+}
+
+function messageProgress() {
+  if (!state.messages.length) return 0;
+  const opened = state.messages.filter((message) => message.opened).length;
+  return Math.round((opened / state.messages.length) * 100);
+}
+
 function getNextEvent() {
   const today = todayISO();
   return [...state.agenda]
@@ -861,7 +891,7 @@ async function syncFromCloud() {
 
     const data = await response.json();
     if (data.state) {
-      state = { ...clone(seedData), ...data.state };
+      state = normalizeState(data.state);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } else {
       await saveStateToCloud();

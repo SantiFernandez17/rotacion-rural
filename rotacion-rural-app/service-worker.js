@@ -1,4 +1,4 @@
-const CACHE_NAME = "rotacion-rural-v4";
+const CACHE_NAME = "rotacion-rural-v5";
 const ASSETS = [
   "./",
   "./index.html",

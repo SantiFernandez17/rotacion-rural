@@ -66,3 +66,5 @@ En AWS Console:
 ## Datos guardados
 
 La API guarda un unico documento compartido en DynamoDB. Ese documento contiene checklist, diario, mensajes, contactos, agenda y perfil. La app mantiene una copia local en el iPhone para seguir funcionando si no hay internet.
+
+Para entender el modelo de datos y ver la base completa, leer `aws/DATABASE.md`.

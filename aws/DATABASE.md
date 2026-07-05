@@ -4,6 +4,28 @@ La app usa DynamoDB como base de datos compartida. No guarda una fila por pantal
 
 ## Arquitectura
 
+```mermaid
+flowchart TD
+  U["Vos / tu novia<br/>iPhone o navegador"] --> CF["Cloudflare Access<br/>protege rotacion-rural.santuli.org"]
+  CF --> APP["PWA Rotacion Rural<br/>HTML, CSS, JS en Cloudflare Worker"]
+
+  APP --> LS["localStorage<br/>copia offline en el dispositivo"]
+
+  APP --> COG["Cognito Hosted UI<br/>login por email"]
+  COG --> TOK["Token JWT<br/>id_token"]
+  TOK --> APP
+
+  APP -->|GET /state<br/>leer nube| API["API Gateway HTTP API<br/>authorizer Cognito"]
+  APP -->|PUT /state<br/>guardar cambios| API
+
+  API --> LAMBDA["Lambda StateFunction<br/>valida usuario y arma respuesta"]
+  LAMBDA -->|GetItem / PutItem| DB["DynamoDB<br/>rotacion-rural-state"]
+
+  DB --> ITEM["Item unico compartido<br/>id = rotacion-rural-main"]
+  ITEM --> STATE["state<br/>profile, diary, messages,<br/>contacts, agenda, checklist"]
+  ITEM --> META["metadata<br/>updatedAt, updatedBy"]
+```
+
 ```text
 iPhone / navegador
   |

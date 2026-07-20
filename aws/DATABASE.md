@@ -22,7 +22,7 @@ flowchart TD
   LAMBDA -->|GetItem / PutItem| DB["DynamoDB<br/>rotacion-rural-state"]
 
   DB --> ITEM["Item unico compartido<br/>id = rotacion-rural-main"]
-  ITEM --> STATE["state<br/>profile, diary, messages,<br/>contacts, agenda, checklist"]
+  ITEM --> STATE["state<br/>profile, diary, messages, plans,<br/>contacts, agenda, checklist"]
   ITEM --> META["metadata<br/>updatedAt, updatedBy"]
   DB --> PREF["Preferencias por usuario<br/>mensaje y hora"]
   DB --> PUSH["Suscripciones por dispositivo<br/>Web Push"]
@@ -91,6 +91,7 @@ El item completo queda con esta forma:
     "checklist": [],
     "diary": [],
     "messages": [],
+    "plans": [],
     "contacts": [],
     "agenda": []
   },
@@ -135,6 +136,7 @@ El widget `Mensaje recibido` consulta solamente la bandeja del usuario autentica
 - `checklist`: queda guardado aunque ya no sea protagonista en el inicio.
 - `diary`: entradas del diario.
 - `messages`: mensajes emocionales y si fueron abiertos.
+- `plans`: planes compartidos para despues de la rotacion, con categoria, fecha, autor y estado.
 - `contacts`: contactos de emergencia.
 - `agenda`: eventos de la rotacion.
 
@@ -199,7 +201,7 @@ id = rotacion-rural-main
 7. Abrir el item.
 8. Expandir el campo `state`.
 
-Ahi podes ver todo: diario, mensajes, contactos, agenda, checklist y perfil.
+Ahi podes ver todo: diario, mensajes, planes, contactos, agenda, checklist y perfil.
 
 ## Ver la base completa por PowerShell
 
@@ -324,7 +326,7 @@ Se puede mirar la tabla sin problema. Para editar manualmente desde AWS Console,
 
 - No borrar el item `rotacion-rural-main`.
 - No cambiar el tipo de `state`; debe seguir siendo un objeto/mapa.
-- No borrar `diary`, `messages`, `contacts` ni `agenda` si queres conservar datos.
+- No borrar `diary`, `messages`, `plans`, `contacts` ni `agenda` si queres conservar datos.
 - Si algo queda mal, la app podria fallar al sincronizar.
 
 Para cambios normales, conviene editar desde la app y usar DynamoDB solo para mirar o hacer backup.

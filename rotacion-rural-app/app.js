@@ -47,6 +47,7 @@ const seedData = {
       opened: false
     }
   ],
+  plans: [],
   contacts: [
     contact("Emergencias", "Numero general", "911", ""),
     contact("Hospital / centro de salud", "Guardia o coordinacion", "", ""),
@@ -63,6 +64,7 @@ const seedData = {
 let state = loadState();
 let activeTab = "home";
 let checklistFilter = "all";
+let planFilter = "pending";
 let cloudStatus = {
   enabled: Boolean(awsConfig.enabled),
   signedIn: false,
@@ -126,6 +128,10 @@ function agenda(date, time, title, place, type, notes) {
   return { id: uid(), date, time, title, place, type, notes, done: false };
 }
 
+function plan(title, category, date, createdBy) {
+  return { id: uid(), title, category, date, createdBy, done: false };
+}
+
 function uid() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -172,7 +178,8 @@ function render() {
     diary: renderDiary,
     love: renderLove,
     contacts: renderContacts,
-    agenda: renderAgenda
+    agenda: renderAgenda,
+    plans: renderPlans
   };
 
   app.innerHTML = views[activeTab]();
@@ -224,6 +231,8 @@ function renderHome() {
 function renderDashboardWidgets(nextEvent) {
   const remaining = daysLeft();
   const receivedMessage = notificationStatus.receivedMessage;
+  const pendingPlans = state.plans.filter((entry) => !entry.done);
+  const planPreview = pendingPlans.slice(0, 3);
 
   return `
     <section class="widget-grid" aria-label="Resumen de la rotacion">
@@ -252,7 +261,76 @@ function renderDashboardWidgets(nextEvent) {
             : `<strong class="widget-title">Todavia no llego ninguno</strong><p>El ultimo mensaje diario recibido quedara guardado aca.</p>`
         }
       </article>
+      <article class="dashboard-widget plans-widget">
+        <div class="row">
+          <span class="widget-label">Planes para la vuelta</span>
+          <button class="icon-button" data-go="plans" aria-label="Abrir planes" title="Abrir planes">&#8250;</button>
+        </div>
+        ${
+          planPreview.length
+            ? `<ul class="widget-list">${planPreview.map((entry) => `<li>${escapeHtml(entry.title)}</li>`).join("")}</ul><span class="widget-meta">${remaining ? `${pendingPlans.length} ${pendingPlans.length === 1 ? "idea" : "ideas"} · faltan ${remaining} dias` : "Ahora si: elijan cual hacer primero"}</span>`
+            : `<strong class="widget-title">Todavia no hay planes</strong><p>Guarden salidas, comidas, viajes y sorpresas para la vuelta.</p>`
+        }
+      </article>
     </section>
+  `;
+}
+
+function renderPlans() {
+  const visiblePlans = [...state.plans]
+    .filter((entry) => planFilter === "all" || (planFilter === "pending" ? !entry.done : entry.done))
+    .sort((a, b) => Number(a.done) - Number(b.done) || (a.date || "9999-12-31").localeCompare(b.date || "9999-12-31"));
+
+  return `
+    <div class="view-back"><button class="icon-button" data-go="home" aria-label="Volver al inicio" title="Volver al inicio">&#8592;</button></div>
+    ${sectionHead("Planes para la vuelta", "Una lista compartida para guardar todo lo que quieran hacer cuando termine la rotacion.")}
+    <form data-form="plan" class="form-panel">
+      <div class="form-grid">
+        <label class="field">Plan
+          <input name="title" placeholder="Cena, paseo, viaje, tarde de peliculas..." maxlength="120" required />
+        </label>
+        <label class="field">Categoria
+          <select name="category">
+            <option>Salida</option>
+            <option>Comida</option>
+            <option>Viaje</option>
+            <option>Casa</option>
+            <option>Sorpresa</option>
+          </select>
+        </label>
+        <label class="field">Fecha opcional
+          <input name="date" type="date" min="${ROTATION_END_DATE}" />
+        </label>
+      </div>
+      <button class="button" type="submit">＋ Agregar plan</button>
+    </form>
+    <div class="toolbar plans-toolbar">
+      <div class="segmented" aria-label="Filtro de planes">
+        <button class="${planFilter === "pending" ? "is-active" : ""}" data-plan-filter="pending">Pendientes</button>
+        <button class="${planFilter === "done" ? "is-active" : ""}" data-plan-filter="done">Realizados</button>
+        <button class="${planFilter === "all" ? "is-active" : ""}" data-plan-filter="all">Todos</button>
+      </div>
+      <span class="muted">${state.plans.filter((entry) => !entry.done).length} por hacer</span>
+    </div>
+    <section class="grid two">
+      ${visiblePlans.map(renderPlan).join("") || emptyState("No hay planes en esta vista", "Agreguen la primera idea para despues de la rotacion.")}
+    </section>
+  `;
+}
+
+function renderPlan(entry) {
+  return `
+    <article class="card entry plan-item ${entry.done ? "done" : ""}">
+      <div class="row">
+        <span class="pill">${escapeHtml(entry.category || "Plan")}</span>
+        <div class="item-actions">
+          <button class="icon-button" data-toggle-plan="${entry.id}" aria-label="${entry.done ? "Marcar pendiente" : "Marcar realizado"}" title="${entry.done ? "Marcar pendiente" : "Marcar realizado"}">${entry.done ? "&#8634;" : "&#10003;"}</button>
+          <button class="icon-button danger" data-delete-plan="${entry.id}" aria-label="Borrar plan" title="Borrar">&#215;</button>
+        </div>
+      </div>
+      <h3>${escapeHtml(entry.title)}</h3>
+      <p>${entry.date ? formatDate(entry.date) : "Sin fecha definida"}<br>${escapeHtml(planAuthor(entry.createdBy))}</p>
+    </article>
   `;
 }
 
@@ -612,6 +690,10 @@ function handleSubmit(event) {
     state.agenda.push(agenda(data.date, data.time, data.title.trim(), data.place.trim(), data.type, data.notes.trim()));
   }
 
+  if (form.dataset.form === "plan") {
+    state.plans.unshift(plan(data.title.trim(), data.category, data.date, cloudStatus.email || "local"));
+  }
+
   saveState();
   form.reset();
   render();
@@ -658,11 +740,18 @@ function handleClick(event) {
     render();
   }
 
+  if (target.dataset.planFilter) {
+    planFilter = target.dataset.planFilter;
+    render();
+    return;
+  }
+
   removeByDataset(target, "deleteCheck", "checklist");
   removeByDataset(target, "deleteDiary", "diary");
   removeByDataset(target, "deleteMessage", "messages");
   removeByDataset(target, "deleteContact", "contacts");
   removeByDataset(target, "deleteAgenda", "agenda");
+  removeByDataset(target, "deletePlan", "plans");
 
   if (target.dataset.toggleMessage) {
     const message = state.messages.find((entry) => entry.id === target.dataset.toggleMessage);
@@ -674,6 +763,13 @@ function handleClick(event) {
   if (target.dataset.toggleAgenda) {
     const agendaEntry = state.agenda.find((entry) => entry.id === target.dataset.toggleAgenda);
     if (agendaEntry) agendaEntry.done = !agendaEntry.done;
+    saveState();
+    render();
+  }
+
+  if (target.dataset.togglePlan) {
+    const planEntry = state.plans.find((entry) => entry.id === target.dataset.togglePlan);
+    if (planEntry) planEntry.done = !planEntry.done;
     saveState();
     render();
   }
@@ -786,6 +882,12 @@ function formatDate(value) {
 
 function cleanPhone(value = "") {
   return value.replace(/[^\d+]/g, "");
+}
+
+function planAuthor(value = "") {
+  if (!value || value === "local") return "Agregado desde este dispositivo";
+  if (value.toLowerCase() === cloudStatus.email.toLowerCase()) return "Agregado por vos";
+  return `Agregado por ${value.split("@")[0]}`;
 }
 
 function escapeHtml(value = "") {

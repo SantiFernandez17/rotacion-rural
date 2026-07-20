@@ -1,4 +1,4 @@
-const CACHE_NAME = "rotacion-rural-v6";
+const CACHE_NAME = "rotacion-rural-v7";
 const ASSETS = [
   "./",
   "./index.html",
@@ -55,6 +55,23 @@ self.addEventListener("fetch", (event) => {
       });
     })
   );
+});
+
+self.addEventListener("push", (event) => {
+  const data = event.data?.json() || {};
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Rotacion Rural", {
+      body: data.body || "Tenes un mensaje nuevo.",
+      icon: "./assets/icon-192-v2.png",
+      badge: "./assets/icon-192-v2.png",
+      data: { url: data.url || "/" }
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(clients.openWindow(event.notification.data?.url || "/"));
 });
 
 function networkFirst(request) {

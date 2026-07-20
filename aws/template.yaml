@@ -16,6 +16,13 @@ Parameters:
     Type: String
     Default: ""
     Description: Emails permitidos separados por coma. Si queda vacio, cualquier usuario del User Pool autenticado puede usar la API.
+  VapidPublicKey:
+    Type: String
+    Description: Clave publica Web Push para el frontend.
+  VapidPrivateKey:
+    Type: String
+    NoEcho: true
+    Description: Clave privada Web Push. No se guarda en Git.
 
 Globals:
   Function:
@@ -106,6 +113,7 @@ Resources:
         AllowMethods:
           - GET
           - PUT
+          - POST
           - OPTIONS
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
@@ -126,6 +134,7 @@ Resources:
         Variables:
           TABLE_NAME: !Ref StateTable
           STATE_ID: rotacion-rural-main
+          NOTIFICATION_SETTINGS_ID: rotacion-rural-notification-settings
           ALLOWED_EMAILS: !Ref AllowedEmails
       Policies:
         - DynamoDBCrudPolicy:
@@ -143,6 +152,47 @@ Resources:
             ApiId: !Ref StateApi
             Path: /state
             Method: PUT
+        GetNotificationSettings:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StateApi
+            Path: /notification-settings
+            Method: GET
+        PutNotificationSettings:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StateApi
+            Path: /notification-settings
+            Method: PUT
+        SavePushSubscription:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StateApi
+            Path: /push-subscription
+            Method: POST
+
+  NotificationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: notifications.handler
+      Timeout: 30
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref StateTable
+          NOTIFICATION_SETTINGS_ID: rotacion-rural-notification-settings
+          VAPID_SUBJECT: !Sub "mailto:${AWS::AccountId}@rotacion-rural.santuli.org"
+          VAPID_PUBLIC_KEY: !Ref VapidPublicKey
+          VAPID_PRIVATE_KEY: !Ref VapidPrivateKey
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StateTable
+      Events:
+        DailyNotification:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 13 * * ? *)
+            Description: Envia el mensaje diario a las 10:00 de Argentina (13:00 UTC).
 
 Outputs:
   ApiBaseUrl:

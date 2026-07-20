@@ -72,6 +72,13 @@ let cloudStatus = {
   updatedBy: "",
   error: ""
 };
+let notificationStatus = {
+  supported: "serviceWorker" in navigator && "PushManager" in window,
+  subscribed: false,
+  loading: false,
+  message: "Buen dia, mi amor. Espero que tengas un lindo dia.",
+  error: ""
+};
 let saveTimer = null;
 
 const app = document.querySelector("#app");
@@ -257,6 +264,27 @@ function renderCloudPanel() {
         <button class="button secondary" data-sync-now>Sincronizar</button>
         <button class="button ghost" data-logout>Salir</button>
       </div>
+    </section>
+    ${renderNotificationPanel()}
+  `;
+}
+
+function renderNotificationPanel() {
+  if (!notificationStatus.supported) {
+    return `<section class="sync-panel"><div><strong>Notificaciones</strong><p>Este navegador no permite Web Push. Probá con Chrome, Edge o una app agregada a la pantalla de inicio en iPhone.</p></div></section>`;
+  }
+
+  return `
+    <section class="form-panel notification-panel">
+      <div class="row"><div><strong>Recordatorio diario</strong><p>Todos los días a las 10:00 de Argentina.</p></div><span class="pill">${notificationStatus.subscribed ? "Activo" : "Sin activar"}</span></div>
+      <label class="field">Mensaje que querés enviar
+        <textarea data-notification-message maxlength="500">${escapeHtml(notificationStatus.message)}</textarea>
+      </label>
+      <div class="row notification-actions">
+        <button class="button" data-enable-notifications ${notificationStatus.loading ? "disabled" : ""}>${notificationStatus.subscribed ? "Notificaciones activas" : "Activar en este navegador"}</button>
+        <button class="button secondary" data-save-notification ${notificationStatus.loading ? "disabled" : ""}>Guardar mensaje</button>
+      </div>
+      ${notificationStatus.error ? `<p class="sync-error">${escapeHtml(notificationStatus.error)}</p>` : ""}
     </section>
   `;
 }
@@ -576,6 +604,16 @@ function handleClick(event) {
     return;
   }
 
+  if (target.dataset.enableNotifications !== undefined) {
+    enableNotifications();
+    return;
+  }
+
+  if (target.dataset.saveNotification !== undefined) {
+    saveNotificationSettings();
+    return;
+  }
+
   if (target.dataset.go) {
     activeTab = target.dataset.go;
     navButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.tab === activeTab));
@@ -741,8 +779,90 @@ async function initCloudSync() {
     cloudStatus.signedIn = true;
     cloudStatus.email = session.email || "";
     await syncFromCloud();
+    await loadNotificationSettings();
   } catch (error) {
     cloudStatus.error = error.message || "No se pudo iniciar la sincronizacion.";
+    render();
+  }
+}
+
+async function loadNotificationSettings() {
+  const token = await getValidIdToken();
+  if (!token) return;
+
+  try {
+    const response = await fetch(`${trimSlash(awsConfig.apiBaseUrl)}/notification-settings`, {
+      headers: { authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error("No se pudo leer la configuracion de notificaciones.");
+    const data = await response.json();
+    notificationStatus.message = data.message || notificationStatus.message;
+  } catch (error) {
+    notificationStatus.error = error.message || "No se pudo cargar el mensaje diario.";
+  }
+  render();
+}
+
+async function saveNotificationSettings() {
+  const input = document.querySelector("[data-notification-message]");
+  const message = input?.value.trim() || "";
+  if (!message) {
+    notificationStatus.error = "Escribí un mensaje antes de guardarlo.";
+    render();
+    return;
+  }
+
+  notificationStatus.loading = true;
+  notificationStatus.error = "";
+  render();
+  try {
+    const token = await getValidIdToken();
+    const response = await fetch(`${trimSlash(awsConfig.apiBaseUrl)}/notification-settings`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ message, enabled: true })
+    });
+    if (!response.ok) throw new Error("No se pudo guardar el mensaje diario.");
+    notificationStatus.message = message;
+  } catch (error) {
+    notificationStatus.error = error.message || "No se pudo guardar el mensaje diario.";
+  } finally {
+    notificationStatus.loading = false;
+    render();
+  }
+}
+
+async function enableNotifications() {
+  if (!notificationStatus.supported || !awsConfig.vapidPublicKey) return;
+  notificationStatus.loading = true;
+  notificationStatus.error = "";
+  render();
+
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") throw new Error("El navegador no autorizó las notificaciones.");
+
+    const registration = await navigator.serviceWorker.ready;
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: base64UrlToBytes(awsConfig.vapidPublicKey)
+      });
+    }
+
+    const token = await getValidIdToken();
+    const response = await fetch(`${trimSlash(awsConfig.apiBaseUrl)}/push-subscription`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ subscription: subscription.toJSON() })
+    });
+    if (!response.ok) throw new Error("No se pudo registrar este navegador en AWS.");
+    notificationStatus.subscribed = true;
+  } catch (error) {
+    notificationStatus.error = error.message || "No se pudieron activar las notificaciones.";
+  } finally {
+    notificationStatus.loading = false;
     render();
   }
 }
@@ -975,6 +1095,13 @@ function parseJwt(token = "") {
   } catch {
     return {};
   }
+}
+
+function base64UrlToBytes(value) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replaceAll("-", "+").replaceAll("_", "/");
+  const raw = atob(base64);
+  return Uint8Array.from(raw, (character) => character.charCodeAt(0));
 }
 
 async function sha256Base64Url(value) {

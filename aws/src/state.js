@@ -5,7 +5,7 @@ const crypto = require("node:crypto");
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const tableName = process.env.TABLE_NAME;
 const stateId = process.env.STATE_ID || "rotacion-rural-main";
-const settingsId = process.env.NOTIFICATION_SETTINGS_ID || "rotacion-rural-notification-settings";
+const settingsPrefix = process.env.NOTIFICATION_SETTINGS_PREFIX || "rotacion-rural-notification-settings#";
 const allowedEmails = (process.env.ALLOWED_EMAILS || "")
   .split(",")
   .map((email) => email.trim().toLowerCase())
@@ -66,32 +66,42 @@ exports.handler = async (event) => {
   }
 
   if (method === "GET" && path === "/notification-settings") {
-    const result = await client.send(new GetCommand({ TableName: tableName, Key: { id: settingsId } }));
+    if (!email) return json(401, { message: "La sesion no incluye un email valido." });
+    const result = await client.send(new GetCommand({
+      TableName: tableName,
+      Key: { id: notificationSettingsId(email) }
+    }));
     return json(200, {
       message: result.Item?.message || "Buen dia, mi amor. Espero que tengas un lindo dia.",
       enabled: result.Item?.enabled !== false,
-      hour: result.Item?.hour || 10,
+      time: result.Item?.time || "10:00",
       timezone: result.Item?.timezone || "America/Argentina/Buenos_Aires"
     });
   }
 
   if (method === "PUT" && path === "/notification-settings") {
+    if (!email) return json(401, { message: "La sesion no incluye un email valido." });
     const body = parseBody(event.body);
     const message = String(body?.message || "").trim();
+    const time = String(body?.time || "").trim();
     if (!message || message.length > 500) {
       return json(400, { message: "El mensaje debe tener entre 1 y 500 caracteres." });
+    }
+    if (!isValidTime(time)) {
+      return json(400, { message: "La hora debe tener formato HH:MM." });
     }
 
     await client.send(new PutCommand({
       TableName: tableName,
       Item: {
-        id: settingsId,
+        id: notificationSettingsId(email),
+        ownerEmail: email,
         message,
         enabled: body?.enabled !== false,
-        hour: 10,
+        time,
         timezone: "America/Argentina/Buenos_Aires",
         updatedAt: new Date().toISOString(),
-        updatedBy: email || claims.sub || "unknown"
+        updatedBy: email
       }
     }));
     return json(200, { ok: true });
@@ -127,6 +137,17 @@ function parseBody(body) {
   } catch {
     return null;
   }
+}
+
+function notificationSettingsId(email) {
+  const userId = crypto.createHash("sha256").update(email).digest("hex");
+  return `${settingsPrefix}${userId}`;
+}
+
+function isValidTime(value) {
+  if (!/^\d{2}:\d{2}$/.test(value)) return false;
+  const [hour, minute] = value.split(":").map(Number);
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
 }
 
 function json(statusCode, body) {

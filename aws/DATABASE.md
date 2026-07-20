@@ -1,6 +1,6 @@
 # Base de datos AWS
 
-La app usa DynamoDB como base de datos compartida. No guarda una fila por pantalla ni una tabla por seccion: guarda el estado completo de la app en un unico documento.
+La app usa DynamoDB como base de datos compartida. El contenido principal vive en un documento y las preferencias de notificaciones se guardan por usuario y dispositivo.
 
 ## Arquitectura
 
@@ -24,6 +24,11 @@ flowchart TD
   DB --> ITEM["Item unico compartido<br/>id = rotacion-rural-main"]
   ITEM --> STATE["state<br/>profile, diary, messages,<br/>contacts, agenda, checklist"]
   ITEM --> META["metadata<br/>updatedAt, updatedBy"]
+  DB --> PREF["Preferencias por usuario<br/>mensaje y hora"]
+  DB --> PUSH["Suscripciones por dispositivo<br/>Web Push"]
+  SCHED["EventBridge<br/>cada minuto"] --> NL["NotificationFunction"]
+  NL --> DB
+  NL --> PUSH
 ```
 
 ```text
@@ -50,7 +55,9 @@ DynamoDB rotacion-rural-state
 ```text
 Region: us-east-1
 Tabla DynamoDB: rotacion-rural-state
-Item compartido: rotacion-rural-main
+Item compartido principal: rotacion-rural-main
+Preferencias: rotacion-rural-notification-settings#...
+Dispositivos: rotacion-rural-push#...
 API base URL: https://vry8qsj2yd.execute-api.us-east-1.amazonaws.com
 Endpoint: /state
 User Pool Cognito: us-east-1_RcCcY4QbF
@@ -66,7 +73,7 @@ La tabla tiene una sola clave primaria:
 id: string
 ```
 
-La app usa siempre este id:
+El contenido compartido usa este id:
 
 ```text
 rotacion-rural-main
@@ -89,6 +96,22 @@ El item completo queda con esta forma:
   "updatedBy": "mail@ejemplo.com"
 }
 ```
+
+Cada usuario autenticado tiene ademas una preferencia de notificacion:
+
+```json
+{
+  "id": "rotacion-rural-notification-settings#<hash-del-email>",
+  "ownerEmail": "mail@ejemplo.com",
+  "message": "Que tengas un lindo dia",
+  "time": "10:00",
+  "timezone": "America/Argentina/Buenos_Aires",
+  "enabled": true,
+  "lastSentDate": "2026-07-19"
+}
+```
+
+Cada navegador o iPhone que activa notificaciones crea otro item con prefijo `rotacion-rural-push#`. La suscripcion queda asociada al email que inicio sesion.
 
 `state` contiene todo lo que ve la app:
 
@@ -131,13 +154,13 @@ PUT /state
 
 ## Regla importante
 
-Hoy todos los usuarios comparten el mismo documento:
+Todos los usuarios comparten el documento principal:
 
 ```text
 rotacion-rural-main
 ```
 
-Eso significa que vos y tu novia ven lo mismo. Si los dos editan al mismo tiempo, gana el ultimo guardado.
+Eso significa que vos y tu novia ven el mismo diario, agenda, contactos y mensajes. Si los dos editan eso al mismo tiempo, gana el ultimo guardado. El mensaje diario y su hora, en cambio, son personales para cada cuenta.
 
 ## Ver la base completa desde AWS Console
 
@@ -235,7 +258,7 @@ aws dynamodb scan `
   --select COUNT
 ```
 
-Si devuelve `Count = 1`, la tabla ya tiene el documento compartido.
+El conteo puede ser mayor que uno porque tambien incluye preferencias personales y suscripciones Web Push. Para validar el contenido principal, busca `id = rotacion-rural-main`.
 
 Despues revisar:
 
@@ -275,6 +298,7 @@ Authorization: Bearer <id_token>
 
 - Infraestructura: `aws/template.yaml`
 - Lambda que lee/escribe DynamoDB: `aws/src/state.js`
+- Lambda que envia notificaciones: `aws/src/notifications.js`
 - Configuracion AWS del frontend: `rotacion-rural-app/aws-config.js`
 - Sincronizacion frontend: `rotacion-rural-app/app.js`
 

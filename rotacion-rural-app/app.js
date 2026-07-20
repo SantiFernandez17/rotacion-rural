@@ -77,6 +77,7 @@ let notificationStatus = {
   subscribed: false,
   loading: false,
   message: "Buen dia, mi amor. Espero que tengas un lindo dia.",
+  time: "10:00",
   error: ""
 };
 let saveTimer = null;
@@ -276,9 +277,12 @@ function renderNotificationPanel() {
 
   return `
     <section class="form-panel notification-panel">
-      <div class="row"><div><strong>Recordatorio diario</strong><p>Todos los días a las 10:00 de Argentina.</p></div><span class="pill">${notificationStatus.subscribed ? "Activo" : "Sin activar"}</span></div>
-      <label class="field">Mensaje que querés enviar
+      <div class="row"><div><strong>Tu mensaje diario</strong><p>Se enviará a la otra persona todos los días a la hora que elijas.</p></div><span class="pill">${notificationStatus.subscribed ? "Activo" : "Sin activar"}</span></div>
+      <label class="field">Mensaje para la otra persona
         <textarea data-notification-message maxlength="500">${escapeHtml(notificationStatus.message)}</textarea>
+      </label>
+      <label class="field">Hora de envío
+        <input type="time" data-notification-time value="${escapeAttr(notificationStatus.time)}" required />
       </label>
       <div class="row notification-actions">
         <button class="button" data-enable-notifications ${notificationStatus.loading ? "disabled" : ""}>${notificationStatus.subscribed ? "Notificaciones activas" : "Activar en este navegador"}</button>
@@ -797,6 +801,11 @@ async function loadNotificationSettings() {
     if (!response.ok) throw new Error("No se pudo leer la configuracion de notificaciones.");
     const data = await response.json();
     notificationStatus.message = data.message || notificationStatus.message;
+    notificationStatus.time = data.time || notificationStatus.time;
+    if (notificationStatus.supported) {
+      const registration = await navigator.serviceWorker.ready;
+      notificationStatus.subscribed = Boolean(await registration.pushManager.getSubscription());
+    }
   } catch (error) {
     notificationStatus.error = error.message || "No se pudo cargar el mensaje diario.";
   }
@@ -805,9 +814,16 @@ async function loadNotificationSettings() {
 
 async function saveNotificationSettings() {
   const input = document.querySelector("[data-notification-message]");
+  const timeInput = document.querySelector("[data-notification-time]");
   const message = input?.value.trim() || "";
+  const time = timeInput?.value || "";
   if (!message) {
     notificationStatus.error = "Escribí un mensaje antes de guardarlo.";
+    render();
+    return;
+  }
+  if (!/^\d{2}:\d{2}$/.test(time)) {
+    notificationStatus.error = "Elegí una hora válida.";
     render();
     return;
   }
@@ -820,10 +836,11 @@ async function saveNotificationSettings() {
     const response = await fetch(`${trimSlash(awsConfig.apiBaseUrl)}/notification-settings`, {
       method: "PUT",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify({ message, enabled: true })
+      body: JSON.stringify({ message, time, enabled: true })
     });
     if (!response.ok) throw new Error("No se pudo guardar el mensaje diario.");
     notificationStatus.message = message;
+    notificationStatus.time = time;
   } catch (error) {
     notificationStatus.error = error.message || "No se pudo guardar el mensaje diario.";
   } finally {

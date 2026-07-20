@@ -1,10 +1,10 @@
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, DeleteCommand, GetCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb");
+const { DynamoDBDocumentClient, DeleteCommand, ScanCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
 const webpush = require("web-push");
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const tableName = process.env.TABLE_NAME;
-const settingsId = process.env.NOTIFICATION_SETTINGS_ID || "rotacion-rural-notification-settings";
+const settingsPrefix = process.env.NOTIFICATION_SETTINGS_PREFIX || "rotacion-rural-notification-settings#";
 
 exports.handler = async () => {
   webpush.setVapidDetails(
@@ -13,37 +13,79 @@ exports.handler = async () => {
     process.env.VAPID_PRIVATE_KEY
   );
 
-  const settings = await client.send(new GetCommand({ TableName: tableName, Key: { id: settingsId } }));
-  if (settings.Item?.enabled === false || !settings.Item?.message) {
-    return { ok: true, skipped: true };
-  }
-
-  const result = await client.send(new ScanCommand({
+  const settingsResult = await client.send(new ScanCommand({
+    TableName: tableName,
+    FilterExpression: "begins_with(#id, :prefix)",
+    ExpressionAttributeNames: { "#id": "id" },
+    ExpressionAttributeValues: { ":prefix": settingsPrefix }
+  }));
+  const subscriptionsResult = await client.send(new ScanCommand({
     TableName: tableName,
     FilterExpression: "begins_with(#id, :prefix)",
     ExpressionAttributeNames: { "#id": "id" },
     ExpressionAttributeValues: { ":prefix": "rotacion-rural-push#" }
   }));
 
-  const payload = JSON.stringify({
-    title: "Rotacion Rural",
-    body: settings.Item.message,
-    url: "/"
-  });
+  const now = new Date();
   let sent = 0;
+  let processed = 0;
 
-  for (const item of result.Items || []) {
-    try {
-      await webpush.sendNotification(item.subscription, payload);
-      sent += 1;
-    } catch (error) {
-      if ([404, 410].includes(error.statusCode)) {
-        await client.send(new DeleteCommand({ TableName: tableName, Key: { id: item.id } }));
-      } else {
-        console.error("No se pudo enviar una notificacion", error);
+  for (const settings of settingsResult.Items || []) {
+    const local = localDateTime(now, settings.timezone || "America/Argentina/Buenos_Aires");
+    if (settings.enabled === false || !settings.message || settings.time !== local.time || settings.lastSentDate === local.date) {
+      continue;
+    }
+
+    const payload = JSON.stringify({
+      title: "Rotacion Rural",
+      body: settings.message,
+      url: "/"
+    });
+
+    const recipients = (subscriptionsResult.Items || []).filter((item) => item.email !== settings.ownerEmail);
+    for (const item of recipients) {
+      try {
+        await webpush.sendNotification(item.subscription, payload);
+        sent += 1;
+      } catch (error) {
+        if ([404, 410].includes(error.statusCode)) {
+          await client.send(new DeleteCommand({ TableName: tableName, Key: { id: item.id } }));
+        } else {
+          console.error("No se pudo enviar una notificacion", error);
+        }
       }
     }
+
+    await client.send(new UpdateCommand({
+      TableName: tableName,
+      Key: { id: settings.id },
+      UpdateExpression: "SET lastSentDate = :date, lastSentAt = :sentAt",
+      ExpressionAttributeValues: { ":date": local.date, ":sentAt": now.toISOString() }
+    }));
+    processed += 1;
   }
 
-  return { ok: true, sent };
+  return { ok: true, processed, sent };
 };
+
+function localDateTime(date, timezone) {
+  const values = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    })
+      .formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+
+  return {
+    date: `${values.year}-${values.month}-${values.day}`,
+    time: `${values.hour}:${values.minute}`
+  };
+}

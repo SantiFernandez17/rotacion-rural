@@ -134,7 +134,7 @@ Resources:
         Variables:
           TABLE_NAME: !Ref StateTable
           STATE_ID: rotacion-rural-main
-          NOTIFICATION_SETTINGS_ID: rotacion-rural-notification-settings
+          NOTIFICATION_SETTINGS_PREFIX: rotacion-rural-notification-settings#
           ALLOWED_EMAILS: !Ref AllowedEmails
       Policies:
         - DynamoDBCrudPolicy:
@@ -180,7 +180,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref StateTable
-          NOTIFICATION_SETTINGS_ID: rotacion-rural-notification-settings
+          NOTIFICATION_SETTINGS_PREFIX: rotacion-rural-notification-settings#
           VAPID_SUBJECT: !Sub "mailto:${AWS::AccountId}@rotacion-rural.santuli.org"
           VAPID_PUBLIC_KEY: !Ref VapidPublicKey
           VAPID_PRIVATE_KEY: !Ref VapidPrivateKey
@@ -191,8 +191,8 @@ Resources:
         DailyNotification:
           Type: Schedule
           Properties:
-            Schedule: cron(0 13 * * ? *)
-            Description: Envia el mensaje diario a las 10:00 de Argentina (13:00 UTC).
+            Schedule: rate(1 minute)
+            Description: Revisa cada minuto los mensajes personales pendientes de envio.
 
 Outputs:
   ApiBaseUrl:

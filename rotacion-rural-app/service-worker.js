@@ -1,4 +1,4 @@
-const CACHE_NAME = "rotacion-rural-v8";
+const CACHE_NAME = "rotacion-rural-v9";
 const ASSETS = [
   "./",
   "./index.html",
@@ -60,12 +60,21 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("push", (event) => {
   const data = event.data?.json() || {};
   event.waitUntil(
-    self.registration.showNotification(data.title || "Rotacion Rural", {
-      body: data.body || "Tenes un mensaje nuevo.",
-      icon: "./assets/icon-192-v2.png",
-      badge: "./assets/icon-192-v2.png",
-      data: { url: data.url || "/" }
-    })
+    Promise.all([
+      self.registration.showNotification(data.title || "Rotacion Rural", {
+        body: data.body || "Tenes un mensaje nuevo.",
+        icon: "./assets/icon-192-v2.png",
+        badge: "./assets/icon-192-v2.png",
+        data: { url: data.url || "/" }
+      }),
+      self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
+        windowClients.forEach((client) => client.postMessage({
+          type: "notification-received",
+          body: data.body || "",
+          sentAt: data.sentAt || new Date().toISOString()
+        }));
+      })
+    ])
   );
 });
 

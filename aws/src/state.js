@@ -6,6 +6,7 @@ const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const tableName = process.env.TABLE_NAME;
 const stateId = process.env.STATE_ID || "rotacion-rural-main";
 const settingsPrefix = process.env.NOTIFICATION_SETTINGS_PREFIX || "rotacion-rural-notification-settings#";
+const inboxPrefix = process.env.NOTIFICATION_INBOX_PREFIX || "rotacion-rural-notification-inbox#";
 const allowedEmails = (process.env.ALLOWED_EMAILS || "")
   .split(",")
   .map((email) => email.trim().toLowerCase())
@@ -71,6 +72,21 @@ exports.handler = async (event) => {
       TableName: tableName,
       Key: { id: notificationSettingsId(email) }
     }));
+    if (!result.Item) {
+      await client.send(new PutCommand({
+        TableName: tableName,
+        Item: {
+          id: notificationSettingsId(email),
+          ownerEmail: email,
+          message: "Buen dia, mi amor. Espero que tengas un lindo dia.",
+          enabled: false,
+          time: "10:00",
+          timezone: "America/Argentina/Buenos_Aires",
+          updatedAt: new Date().toISOString(),
+          updatedBy: email
+        }
+      }));
+    }
     return json(200, {
       message: result.Item?.message || "Buen dia, mi amor. Espero que tengas un lindo dia.",
       enabled: result.Item?.enabled !== false,
@@ -105,6 +121,18 @@ exports.handler = async (event) => {
       }
     }));
     return json(200, { ok: true });
+  }
+
+  if (method === "GET" && path === "/notification-inbox") {
+    if (!email) return json(401, { message: "La sesion no incluye un email valido." });
+    const result = await client.send(new GetCommand({
+      TableName: tableName,
+      Key: { id: notificationInboxId(email) }
+    }));
+    return json(200, {
+      message: result.Item?.message || "",
+      sentAt: result.Item?.sentAt || ""
+    });
   }
 
   if (method === "POST" && path === "/push-subscription") {
@@ -142,6 +170,11 @@ function parseBody(body) {
 function notificationSettingsId(email) {
   const userId = crypto.createHash("sha256").update(email).digest("hex");
   return `${settingsPrefix}${userId}`;
+}
+
+function notificationInboxId(email) {
+  const userId = crypto.createHash("sha256").update(email).digest("hex");
+  return `${inboxPrefix}${userId}`;
 }
 
 function isValidTime(value) {

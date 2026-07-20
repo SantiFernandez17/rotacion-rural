@@ -1,10 +1,12 @@
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, DeleteCommand, ScanCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
+const { DynamoDBDocumentClient, DeleteCommand, PutCommand, ScanCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
+const crypto = require("node:crypto");
 const webpush = require("web-push");
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const tableName = process.env.TABLE_NAME;
 const settingsPrefix = process.env.NOTIFICATION_SETTINGS_PREFIX || "rotacion-rural-notification-settings#";
+const inboxPrefix = process.env.NOTIFICATION_INBOX_PREFIX || "rotacion-rural-notification-inbox#";
 
 exports.handler = async () => {
   webpush.setVapidDetails(
@@ -39,11 +41,31 @@ exports.handler = async () => {
     const payload = JSON.stringify({
       title: "Rotacion Rural",
       body: settings.message,
-      url: "/"
+      url: "/",
+      sentAt: now.toISOString()
     });
 
-    const recipients = (subscriptionsResult.Items || []).filter((item) => item.email !== settings.ownerEmail);
-    for (const item of recipients) {
+    const recipientEmails = [...new Set(
+      (settingsResult.Items || [])
+        .map((item) => item.ownerEmail)
+        .filter((email) => email && email !== settings.ownerEmail)
+    )];
+    const recipientSubscriptions = (subscriptionsResult.Items || []).filter((item) => recipientEmails.includes(item.email));
+
+    for (const recipientEmail of recipientEmails) {
+      await client.send(new PutCommand({
+        TableName: tableName,
+        Item: {
+          id: notificationInboxId(recipientEmail),
+          recipientEmail,
+          senderEmail: settings.ownerEmail,
+          message: settings.message,
+          sentAt: now.toISOString()
+        }
+      }));
+    }
+
+    for (const item of recipientSubscriptions) {
       try {
         await webpush.sendNotification(item.subscription, payload);
         sent += 1;
@@ -67,6 +89,11 @@ exports.handler = async () => {
 
   return { ok: true, processed, sent };
 };
+
+function notificationInboxId(email) {
+  const userId = crypto.createHash("sha256").update(email).digest("hex");
+  return `${inboxPrefix}${userId}`;
+}
 
 function localDateTime(date, timezone) {
   const values = Object.fromEntries(

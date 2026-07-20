@@ -135,6 +135,7 @@ Resources:
           TABLE_NAME: !Ref StateTable
           STATE_ID: rotacion-rural-main
           NOTIFICATION_SETTINGS_PREFIX: rotacion-rural-notification-settings#
+          NOTIFICATION_INBOX_PREFIX: rotacion-rural-notification-inbox#
           ALLOWED_EMAILS: !Ref AllowedEmails
       Policies:
         - DynamoDBCrudPolicy:
@@ -170,6 +171,12 @@ Resources:
             ApiId: !Ref StateApi
             Path: /push-subscription
             Method: POST
+        GetNotificationInbox:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StateApi
+            Path: /notification-inbox
+            Method: GET
 
   NotificationFunction:
     Type: AWS::Serverless::Function
@@ -181,6 +188,7 @@ Resources:
         Variables:
           TABLE_NAME: !Ref StateTable
           NOTIFICATION_SETTINGS_PREFIX: rotacion-rural-notification-settings#
+          NOTIFICATION_INBOX_PREFIX: rotacion-rural-notification-inbox#
           VAPID_SUBJECT: !Sub "mailto:${AWS::AccountId}@rotacion-rural.santuli.org"
           VAPID_PUBLIC_KEY: !Ref VapidPublicKey
           VAPID_PRIVATE_KEY: !Ref VapidPrivateKey

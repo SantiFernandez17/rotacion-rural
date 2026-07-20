@@ -148,6 +148,78 @@ h1 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.widget-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.dashboard-widget {
+  display: flex;
+  min-height: 184px;
+  flex-direction: column;
+  gap: 9px;
+  overflow: hidden;
+  padding: 15px;
+  border: 1px solid rgba(129, 106, 78, 0.2);
+  border-top: 4px solid var(--green);
+  border-radius: var(--radius);
+  background: rgba(255, 250, 242, 0.92);
+  box-shadow: var(--shadow);
+}
+
+.dashboard-widget:nth-child(2) {
+  border-top-color: var(--blue);
+}
+
+.dashboard-widget:nth-child(3) {
+  border-top-color: var(--accent);
+}
+
+.widget-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.widget-number {
+  margin-top: auto;
+  font-size: 3.2rem;
+  line-height: 0.95;
+}
+
+.widget-title {
+  margin-top: auto;
+  font-size: 1.08rem;
+  line-height: 1.25;
+}
+
+.dashboard-widget p {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.widget-meta {
+  margin-top: auto;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.widget-message {
+  max-height: 96px;
+  overflow-y: auto;
+  color: var(--ink) !important;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.home-actions {
+  margin-top: 0;
+}
+
 .card,
 .form-panel,
 .stat,
@@ -532,8 +604,13 @@ details.form-panel summary {
 @media (max-width: 760px) {
   .grid.two,
   .grid.three,
+  .widget-grid,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-widget {
+    min-height: 164px;
   }
 
   .section-head {

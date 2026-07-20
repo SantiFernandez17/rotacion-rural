@@ -26,6 +26,7 @@ flowchart TD
   ITEM --> META["metadata<br/>updatedAt, updatedBy"]
   DB --> PREF["Preferencias por usuario<br/>mensaje y hora"]
   DB --> PUSH["Suscripciones por dispositivo<br/>Web Push"]
+  DB --> INBOX["Ultimo mensaje recibido<br/>por usuario"]
   SCHED["EventBridge<br/>cada minuto"] --> NL["NotificationFunction"]
   NL --> DB
   NL --> PUSH
@@ -58,6 +59,7 @@ Tabla DynamoDB: rotacion-rural-state
 Item compartido principal: rotacion-rural-main
 Preferencias: rotacion-rural-notification-settings#...
 Dispositivos: rotacion-rural-push#...
+Bandejas personales: rotacion-rural-notification-inbox#...
 API base URL: https://vry8qsj2yd.execute-api.us-east-1.amazonaws.com
 Endpoint: /state
 User Pool Cognito: us-east-1_RcCcY4QbF
@@ -112,6 +114,20 @@ Cada usuario autenticado tiene ademas una preferencia de notificacion:
 ```
 
 Cada navegador o iPhone que activa notificaciones crea otro item con prefijo `rotacion-rural-push#`. La suscripcion queda asociada al email que inicio sesion.
+
+Cuando un mensaje diario se envia, Lambda guarda tambien el ultimo recibido para cada destinatario:
+
+```json
+{
+  "id": "rotacion-rural-notification-inbox#<hash-del-email>",
+  "recipientEmail": "destinatario@ejemplo.com",
+  "senderEmail": "remitente@ejemplo.com",
+  "message": "Que tengas un lindo dia",
+  "sentAt": "2026-07-20T13:00:00.000Z"
+}
+```
+
+El widget `Mensaje recibido` consulta solamente la bandeja del usuario autenticado mediante `GET /notification-inbox`.
 
 `state` contiene todo lo que ve la app:
 

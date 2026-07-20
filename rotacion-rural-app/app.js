@@ -78,6 +78,8 @@ let notificationStatus = {
   loading: false,
   message: "Buen dia, mi amor. Espero que tengas un lindo dia.",
   time: "10:00",
+  receivedMessage: "",
+  receivedAt: "",
   error: ""
 };
 let saveTimer = null;
@@ -100,6 +102,12 @@ document.addEventListener("change", handleChange);
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("service-worker.js").catch(() => {});
+  });
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data?.type !== "notification-received") return;
+    notificationStatus.receivedMessage = event.data.body || "";
+    notificationStatus.receivedAt = event.data.sentAt || new Date().toISOString();
+    render();
   });
 }
 
@@ -179,23 +187,8 @@ function renderHome() {
   return `
     ${sectionHead("Hola, ${escapeHtml(state.profile.name)}", "Un tablero corto para acompanar la rotacion, escribir lo vivido y tener lo importante a mano.")}
     ${renderCloudPanel()}
-    <section class="grid three">
-      ${stat(daysLeft(), "Dias hasta el 28/08", rotationProgress())}
-      ${stat(state.diary.length, "Entradas de diario", Math.min(state.diary.length * 12, 100))}
-      ${stat(unopenedMessages, "Mensajes por abrir", messageProgress())}
-    </section>
-    <section class="grid two" style="margin-top: 14px;">
-      <article class="card entry">
-        <div class="row">
-          <span class="pill">Proximo</span>
-          <button class="button ghost" data-go="agenda">Ver agenda</button>
-        </div>
-        ${
-          nextEvent
-            ? `<h3>${escapeHtml(nextEvent.title)}</h3><p>${formatDate(nextEvent.date)} ${nextEvent.time ? `- ${escapeHtml(nextEvent.time)}` : ""}<br>${escapeHtml(nextEvent.place || "Sin lugar cargado")}</p>`
-            : `<h3>Sin eventos pendientes</h3><p>Agrega fechas importantes para que aparezcan aca.</p>`
-        }
-      </article>
+    ${renderDashboardWidgets(nextEvent)}
+    <section class="grid three home-actions">
       <article class="card entry">
         <div class="row">
           <span class="pill">Diario</span>
@@ -223,6 +216,41 @@ function renderHome() {
         <h3>${primaryContact ? escapeHtml(primaryContact.name) : "Sin telefono cargado"}</h3>
         <p>${primaryContact ? escapeHtml(primaryContact.role || primaryContact.phone) : "Carga al menos un numero importante para llamar desde la app."}</p>
         ${primaryContact ? `<a class="button secondary full" href="tel:${cleanPhone(primaryContact.phone)}">☎ Llamar</a>` : ""}
+      </article>
+    </section>
+  `;
+}
+
+function renderDashboardWidgets(nextEvent) {
+  const remaining = daysLeft();
+  const receivedMessage = notificationStatus.receivedMessage;
+
+  return `
+    <section class="widget-grid" aria-label="Resumen de la rotacion">
+      <article class="dashboard-widget countdown-widget">
+        <span class="widget-label">Cuenta regresiva</span>
+        <strong class="widget-number">${remaining}</strong>
+        <p>${remaining === 1 ? "dia" : "dias"} hasta el 28 de agosto</p>
+        <div class="progress" aria-label="${rotationProgress()}% de la rotacion transcurrido"><span style="--value: ${rotationProgress()}%"></span></div>
+      </article>
+      <article class="dashboard-widget">
+        <div class="row">
+          <span class="widget-label">Proxima actividad</span>
+          <button class="icon-button" data-go="agenda" aria-label="Abrir agenda" title="Abrir agenda">&#8250;</button>
+        </div>
+        ${
+          nextEvent
+            ? `<strong class="widget-title">${escapeHtml(nextEvent.title)}</strong><p>${formatDate(nextEvent.date)}${nextEvent.time ? ` a las ${escapeHtml(nextEvent.time)}` : ""}</p><span class="widget-meta">${escapeHtml(nextEvent.place || "Sin lugar cargado")}</span>`
+            : `<strong class="widget-title">Sin actividades pendientes</strong><p>La proxima fecha que agreguen aparecera aca.</p>`
+        }
+      </article>
+      <article class="dashboard-widget message-widget">
+        <span class="widget-label">Mensaje recibido</span>
+        ${
+          receivedMessage
+            ? `<p class="widget-message">${escapeHtml(receivedMessage)}</p><span class="widget-meta">${notificationStatus.receivedAt ? `Recibido ${formatDateTime(notificationStatus.receivedAt)}` : "Recibido recientemente"}</span>`
+            : `<strong class="widget-title">Todavia no llego ninguno</strong><p>El ultimo mensaje diario recibido quedara guardado aca.</p>`
+        }
       </article>
     </section>
   `;
@@ -605,6 +633,7 @@ function handleClick(event) {
 
   if (target.dataset.syncNow !== undefined) {
     syncFromCloud();
+    loadNotificationInbox();
     return;
   }
 
@@ -784,10 +813,29 @@ async function initCloudSync() {
     cloudStatus.email = session.email || "";
     await syncFromCloud();
     await loadNotificationSettings();
+    await loadNotificationInbox();
   } catch (error) {
     cloudStatus.error = error.message || "No se pudo iniciar la sincronizacion.";
     render();
   }
+}
+
+async function loadNotificationInbox() {
+  const token = await getValidIdToken();
+  if (!token) return;
+
+  try {
+    const response = await fetch(`${trimSlash(awsConfig.apiBaseUrl)}/notification-inbox`, {
+      headers: { authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error("No se pudo leer el ultimo mensaje recibido.");
+    const data = await response.json();
+    notificationStatus.receivedMessage = data.message || "";
+    notificationStatus.receivedAt = data.sentAt || "";
+  } catch (error) {
+    notificationStatus.error = error.message || "No se pudo cargar el mensaje recibido.";
+  }
+  render();
 }
 
 async function loadNotificationSettings() {

@@ -34,7 +34,20 @@ exports.handler = async () => {
 
   for (const settings of settingsResult.Items || []) {
     const local = localDateTime(now, settings.timezone || "America/Argentina/Buenos_Aires");
-    if (settings.enabled === false || !settings.message || settings.time !== local.time || settings.lastSentDate === local.date) {
+    const scheduledMinute = timeToMinutes(settings.time);
+    const currentMinute = timeToMinutes(local.time);
+    const crossedMidnight = currentMinute < scheduledMinute;
+    const minutesLate = crossedMidnight
+      ? currentMinute + 24 * 60 - scheduledMinute
+      : currentMinute - scheduledMinute;
+    const dueDate = crossedMidnight ? previousDate(local.date) : local.date;
+    if (
+      settings.enabled === false ||
+      !settings.message ||
+      scheduledMinute < 0 ||
+      minutesLate > 360 ||
+      settings.lastSentDate === dueDate
+    ) {
       continue;
     }
 
@@ -45,30 +58,35 @@ exports.handler = async () => {
       sentAt: now.toISOString()
     });
 
-    const recipientEmails = [...new Set(
-      (settingsResult.Items || [])
-        .map((item) => item.ownerEmail)
-        .filter((email) => email && email !== settings.ownerEmail)
-    )];
+    const recipientEmails = [...new Set([
+      ...(settingsResult.Items || []).map((item) => item.ownerEmail),
+      ...(subscriptionsResult.Items || []).map((item) => item.email)
+    ].filter((email) => email && email !== settings.ownerEmail))];
     const recipientSubscriptions = (subscriptionsResult.Items || []).filter((item) => recipientEmails.includes(item.email));
 
-    for (const recipientEmail of recipientEmails) {
-      await client.send(new PutCommand({
-        TableName: tableName,
-        Item: {
-          id: notificationInboxId(recipientEmail),
-          recipientEmail,
-          senderEmail: settings.ownerEmail,
-          message: settings.message,
-          sentAt: now.toISOString()
-        }
-      }));
+    let inboxDelivered = false;
+    if (settings.lastInboxDate !== dueDate) {
+      for (const recipientEmail of recipientEmails) {
+        await client.send(new PutCommand({
+          TableName: tableName,
+          Item: {
+            id: notificationInboxId(recipientEmail),
+            recipientEmail,
+            senderEmail: settings.ownerEmail,
+            message: settings.message,
+            sentAt: now.toISOString()
+          }
+        }));
+        inboxDelivered = true;
+      }
     }
 
+    let sentForSetting = 0;
     for (const item of recipientSubscriptions) {
       try {
         await webpush.sendNotification(item.subscription, payload);
         sent += 1;
+        sentForSetting += 1;
       } catch (error) {
         if ([404, 410].includes(error.statusCode)) {
           await client.send(new DeleteCommand({ TableName: tableName, Key: { id: item.id } }));
@@ -78,15 +96,29 @@ exports.handler = async () => {
       }
     }
 
-    await client.send(new UpdateCommand({
-      TableName: tableName,
-      Key: { id: settings.id },
-      UpdateExpression: "SET lastSentDate = :date, lastSentAt = :sentAt",
-      ExpressionAttributeValues: { ":date": local.date, ":sentAt": now.toISOString() }
-    }));
-    processed += 1;
+    const updates = [];
+    const values = {};
+    if (inboxDelivered) {
+      updates.push("lastInboxDate = :inboxDate");
+      values[":inboxDate"] = dueDate;
+    }
+    if (sentForSetting > 0) {
+      updates.push("lastSentDate = :sentDate", "lastSentAt = :sentAt");
+      values[":sentDate"] = dueDate;
+      values[":sentAt"] = now.toISOString();
+      processed += 1;
+    }
+    if (updates.length) {
+      await client.send(new UpdateCommand({
+        TableName: tableName,
+        Key: { id: settings.id },
+        UpdateExpression: `SET ${updates.join(", ")}`,
+        ExpressionAttributeValues: values
+      }));
+    }
   }
 
+  console.log(JSON.stringify({ processed, sent }));
   return { ok: true, processed, sent };
 };
 
@@ -115,4 +147,16 @@ function localDateTime(date, timezone) {
     date: `${values.year}-${values.month}-${values.day}`,
     time: `${values.hour}:${values.minute}`
   };
+}
+
+function timeToMinutes(value = "") {
+  if (!/^\d{2}:\d{2}$/.test(value)) return -1;
+  const [hour, minute] = value.split(":").map(Number);
+  return hour * 60 + minute;
+}
+
+function previousDate(value) {
+  const date = new Date(`${value}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
 }

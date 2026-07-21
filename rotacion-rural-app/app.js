@@ -82,6 +82,7 @@ let notificationStatus = {
   time: "10:00",
   receivedMessage: "",
   receivedAt: "",
+  actionMessage: "",
   error: ""
 };
 let saveTimer = null;
@@ -168,6 +169,7 @@ function normalizeState(value) {
   };
 
   normalized.profile.endDate = ROTATION_END_DATE;
+  normalized.plans = Array.isArray(normalized.plans) ? normalized.plans : [];
   return normalized;
 }
 
@@ -192,7 +194,7 @@ function renderHome() {
   const unopenedMessages = state.messages.filter((message) => !message.opened).length;
 
   return `
-    ${sectionHead("Hola, ${escapeHtml(state.profile.name)}", "Un tablero corto para acompanar la rotacion, escribir lo vivido y tener lo importante a mano.")}
+    ${sectionHead(`Hola, ${escapeHtml(state.profile.name)}`, "Un tablero corto para acompanar la rotacion, escribir lo vivido y tener lo importante a mano.")}
     ${renderCloudPanel()}
     ${renderDashboardWidgets(nextEvent)}
     <section class="grid three home-actions">
@@ -393,7 +395,9 @@ function renderNotificationPanel() {
       <div class="row notification-actions">
         <button class="button" data-enable-notifications ${notificationStatus.loading ? "disabled" : ""}>${notificationStatus.subscribed ? "Notificaciones activas" : "Activar en este navegador"}</button>
         <button class="button secondary" data-save-notification ${notificationStatus.loading ? "disabled" : ""}>Guardar mensaje</button>
+        <button class="button ghost" data-test-notification ${notificationStatus.loading ? "disabled" : ""}>Enviar prueba ahora</button>
       </div>
+      ${notificationStatus.actionMessage ? `<p class="sync-success">${escapeHtml(notificationStatus.actionMessage)}</p>` : ""}
       ${notificationStatus.error ? `<p class="sync-error">${escapeHtml(notificationStatus.error)}</p>` : ""}
     </section>
   `;
@@ -691,7 +695,8 @@ function handleSubmit(event) {
   }
 
   if (form.dataset.form === "plan") {
-    state.plans.unshift(plan(data.title.trim(), data.category, data.date, cloudStatus.email || "local"));
+    addPlanToCloud(data, form);
+    return;
   }
 
   saveState();
@@ -714,8 +719,7 @@ function handleClick(event) {
   }
 
   if (target.dataset.syncNow !== undefined) {
-    syncFromCloud();
-    loadNotificationInbox();
+    refreshFromCloud();
     return;
   }
 
@@ -726,6 +730,11 @@ function handleClick(event) {
 
   if (target.dataset.saveNotification !== undefined) {
     saveNotificationSettings();
+    return;
+  }
+
+  if (target.dataset.testNotification !== undefined) {
+    sendTestNotification();
     return;
   }
 
@@ -746,12 +755,21 @@ function handleClick(event) {
     return;
   }
 
+  if (target.dataset.deletePlan) {
+    deletePlanFromCloud(target.dataset.deletePlan);
+    return;
+  }
+
+  if (target.dataset.togglePlan) {
+    togglePlanInCloud(target.dataset.togglePlan);
+    return;
+  }
+
   removeByDataset(target, "deleteCheck", "checklist");
   removeByDataset(target, "deleteDiary", "diary");
   removeByDataset(target, "deleteMessage", "messages");
   removeByDataset(target, "deleteContact", "contacts");
   removeByDataset(target, "deleteAgenda", "agenda");
-  removeByDataset(target, "deletePlan", "plans");
 
   if (target.dataset.toggleMessage) {
     const message = state.messages.find((entry) => entry.id === target.dataset.toggleMessage);
@@ -767,12 +785,6 @@ function handleClick(event) {
     render();
   }
 
-  if (target.dataset.togglePlan) {
-    const planEntry = state.plans.find((entry) => entry.id === target.dataset.togglePlan);
-    if (planEntry) planEntry.done = !planEntry.done;
-    saveState();
-    render();
-  }
 }
 
 function handleChange(event) {
@@ -914,12 +926,120 @@ async function initCloudSync() {
     cloudStatus.signedIn = true;
     cloudStatus.email = session.email || "";
     await syncFromCloud();
+    await loadPlansFromCloud();
     await loadNotificationSettings();
     await loadNotificationInbox();
   } catch (error) {
     cloudStatus.error = error.message || "No se pudo iniciar la sincronizacion.";
     render();
   }
+}
+
+async function refreshFromCloud() {
+  await syncFromCloud();
+  await loadPlansFromCloud();
+  await loadNotificationInbox();
+}
+
+async function loadPlansFromCloud() {
+  const token = await getValidIdToken();
+  if (!token) return;
+
+  try {
+    const response = await fetch(`${trimSlash(awsConfig.apiBaseUrl)}/plans`, {
+      headers: { authorization: `Bearer ${token}` }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || "No se pudieron leer los planes compartidos.");
+    state.plans = Array.isArray(data.plans) ? data.plans : [];
+    savePlansLocally();
+  } catch (error) {
+    cloudStatus.error = error.message || "No se pudieron leer los planes compartidos.";
+  }
+  render();
+}
+
+async function addPlanToCloud(data, form) {
+  const token = await getValidIdToken();
+  if (!token) {
+    cloudStatus.error = "Inicia sesion para agregar un plan compartido.";
+    render();
+    return;
+  }
+
+  cloudStatus.error = "";
+  try {
+    const draft = plan(data.title.trim(), data.category, data.date, cloudStatus.email);
+    const response = await fetch(`${trimSlash(awsConfig.apiBaseUrl)}/plans`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ plan: draft })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || "No se pudo guardar el plan.");
+    state.plans.unshift(result.plan);
+    savePlansLocally();
+    form.reset();
+  } catch (error) {
+    cloudStatus.error = error.message || "No se pudo guardar el plan.";
+  }
+  render();
+}
+
+async function togglePlanInCloud(planId) {
+  const entry = state.plans.find((item) => item.id === planId);
+  if (!entry) return;
+
+  const token = await getValidIdToken();
+  if (!token) {
+    cloudStatus.error = "Inicia sesion para actualizar el plan compartido.";
+    render();
+    return;
+  }
+
+  cloudStatus.error = "";
+  try {
+    const response = await fetch(`${trimSlash(awsConfig.apiBaseUrl)}/plans/${encodeURIComponent(planId)}`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ done: !entry.done })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || "No se pudo actualizar el plan.");
+    state.plans = state.plans.map((item) => item.id === planId ? result.plan : item);
+    savePlansLocally();
+  } catch (error) {
+    cloudStatus.error = error.message || "No se pudo actualizar el plan.";
+  }
+  render();
+}
+
+async function deletePlanFromCloud(planId) {
+  const token = await getValidIdToken();
+  if (!token) {
+    cloudStatus.error = "Inicia sesion para borrar el plan compartido.";
+    render();
+    return;
+  }
+
+  cloudStatus.error = "";
+  try {
+    const response = await fetch(`${trimSlash(awsConfig.apiBaseUrl)}/plans/${encodeURIComponent(planId)}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${token}` }
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || "No se pudo borrar el plan.");
+    state.plans = state.plans.filter((item) => item.id !== planId);
+    savePlansLocally();
+  } catch (error) {
+    cloudStatus.error = error.message || "No se pudo borrar el plan.";
+  }
+  render();
+}
+
+function savePlansLocally() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
 async function loadNotificationInbox() {
@@ -970,16 +1090,18 @@ async function saveNotificationSettings() {
   if (!message) {
     notificationStatus.error = "Escribí un mensaje antes de guardarlo.";
     render();
-    return;
+    return false;
   }
   if (!/^\d{2}:\d{2}$/.test(time)) {
     notificationStatus.error = "Elegí una hora válida.";
     render();
-    return;
+    return false;
   }
 
+  let saved = false;
   notificationStatus.loading = true;
   notificationStatus.error = "";
+  notificationStatus.actionMessage = "";
   render();
   try {
     const token = await getValidIdToken();
@@ -988,11 +1110,41 @@ async function saveNotificationSettings() {
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify({ message, time, enabled: true })
     });
-    if (!response.ok) throw new Error("No se pudo guardar el mensaje diario.");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || "No se pudo guardar el mensaje diario.");
     notificationStatus.message = message;
     notificationStatus.time = time;
+    notificationStatus.actionMessage = "Mensaje y horario guardados.";
+    saved = true;
   } catch (error) {
     notificationStatus.error = error.message || "No se pudo guardar el mensaje diario.";
+  } finally {
+    notificationStatus.loading = false;
+    render();
+  }
+  return saved;
+}
+
+async function sendTestNotification() {
+  const saved = await saveNotificationSettings();
+  if (!saved) return;
+
+  notificationStatus.loading = true;
+  notificationStatus.error = "";
+  notificationStatus.actionMessage = "";
+  render();
+  try {
+    const token = await getValidIdToken();
+    const response = await fetch(`${trimSlash(awsConfig.apiBaseUrl)}/notification-test`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || "No se pudo enviar la prueba.");
+    const recipients = Number(data.recipients || 0);
+    notificationStatus.actionMessage = `Prueba enviada a ${recipients} ${recipients === 1 ? "persona" : "personas"}.`;
+  } catch (error) {
+    notificationStatus.error = error.message || "No se pudo enviar la prueba.";
   } finally {
     notificationStatus.loading = false;
     render();
@@ -1003,6 +1155,7 @@ async function enableNotifications() {
   if (!notificationStatus.supported || !awsConfig.vapidPublicKey) return;
   notificationStatus.loading = true;
   notificationStatus.error = "";
+  notificationStatus.actionMessage = "";
   render();
 
   try {
@@ -1024,8 +1177,10 @@ async function enableNotifications() {
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify({ subscription: subscription.toJSON() })
     });
-    if (!response.ok) throw new Error("No se pudo registrar este navegador en AWS.");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || "No se pudo registrar este navegador en AWS.");
     notificationStatus.subscribed = true;
+    notificationStatus.actionMessage = "Este dispositivo quedó registrado para recibir notificaciones.";
   } catch (error) {
     notificationStatus.error = error.message || "No se pudieron activar las notificaciones.";
   } finally {
@@ -1164,6 +1319,7 @@ async function getValidIdToken() {
 async function syncFromCloud() {
   if (!cloudStatus.enabled || !getSession()) return;
 
+  const localPlans = Array.isArray(state.plans) ? state.plans : [];
   cloudStatus.syncing = true;
   cloudStatus.error = "";
   render();
@@ -1179,6 +1335,7 @@ async function syncFromCloud() {
     const data = await response.json();
     if (data.state) {
       state = normalizeState(data.state);
+      state.plans = localPlans;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } else {
       await saveStateToCloud();
@@ -1212,13 +1369,14 @@ async function saveStateToCloud() {
 
   try {
     const token = await getValidIdToken();
+    const { plans, ...sharedState } = state;
     const response = await fetch(`${trimSlash(awsConfig.apiBaseUrl)}/state`, {
       method: "PUT",
       headers: {
         authorization: `Bearer ${token}`,
         "content-type": "application/json"
       },
-      body: JSON.stringify({ state })
+      body: JSON.stringify({ state: sharedState })
     });
 
     if (!response.ok) throw new Error("No se pudo guardar en AWS.");

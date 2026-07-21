@@ -1,6 +1,6 @@
 # Base de datos AWS
 
-La app usa DynamoDB como base de datos compartida. El contenido principal vive en un documento y las preferencias de notificaciones se guardan por usuario y dispositivo.
+La app usa DynamoDB como base de datos compartida. El contenido principal vive en un documento, cada plan se guarda por separado y las preferencias de notificaciones se guardan por usuario y dispositivo.
 
 ## Arquitectura
 
@@ -15,15 +15,16 @@ flowchart TD
   COG --> TOK["Token JWT<br/>id_token"]
   TOK --> APP
 
-  APP -->|GET /state<br/>leer nube| API["API Gateway HTTP API<br/>authorizer Cognito"]
-  APP -->|PUT /state<br/>guardar cambios| API
+  APP -->|GET/PUT /state<br/>contenido general| API["API Gateway HTTP API<br/>authorizer Cognito"]
+  APP -->|GET/POST/PUT/DELETE /plans<br/>planes independientes| API
 
   API --> LAMBDA["Lambda StateFunction<br/>valida usuario y arma respuesta"]
   LAMBDA -->|GetItem / PutItem| DB["DynamoDB<br/>rotacion-rural-state"]
 
   DB --> ITEM["Item unico compartido<br/>id = rotacion-rural-main"]
-  ITEM --> STATE["state<br/>profile, diary, messages, plans,<br/>contacts, agenda, checklist"]
+  ITEM --> STATE["state<br/>profile, diary, messages,<br/>contacts, agenda, checklist"]
   ITEM --> META["metadata<br/>updatedAt, updatedBy"]
+  DB --> PLANS["Un item por plan<br/>rotacion-rural-plan#..."]
   DB --> PREF["Preferencias por usuario<br/>mensaje y hora"]
   DB --> PUSH["Suscripciones por dispositivo<br/>Web Push"]
   DB --> INBOX["Ultimo mensaje recibido<br/>por usuario"]
@@ -57,11 +58,12 @@ DynamoDB rotacion-rural-state
 Region: us-east-1
 Tabla DynamoDB: rotacion-rural-state
 Item compartido principal: rotacion-rural-main
+Planes compartidos: rotacion-rural-plan#...
 Preferencias: rotacion-rural-notification-settings#...
 Dispositivos: rotacion-rural-push#...
 Bandejas personales: rotacion-rural-notification-inbox#...
 API base URL: https://vry8qsj2yd.execute-api.us-east-1.amazonaws.com
-Endpoint: /state
+Endpoints principales: /state, /plans, /notification-settings, /notification-test
 User Pool Cognito: us-east-1_RcCcY4QbF
 User Pool Client: 3bocrh1p2cqpbql828kvu798ip
 Cognito Domain: https://rotacion-rural-santi-871470318827.auth.us-east-1.amazoncognito.com
@@ -91,11 +93,26 @@ El item completo queda con esta forma:
     "checklist": [],
     "diary": [],
     "messages": [],
-    "plans": [],
     "contacts": [],
     "agenda": []
   },
   "updatedAt": "2026-07-03T00:00:00.000Z",
+  "updatedBy": "mail@ejemplo.com"
+}
+```
+
+Cada plan se guarda en un item independiente para que un telefono con una copia vieja no pueda borrar la lista completa:
+
+```json
+{
+  "id": "rotacion-rural-plan#<id-del-plan>",
+  "planId": "<id-del-plan>",
+  "title": "Cena cuando vuelva",
+  "category": "Comida",
+  "date": "2026-08-29",
+  "createdBy": "mail@ejemplo.com",
+  "done": false,
+  "updatedAt": "2026-07-20T21:00:00.000Z",
   "updatedBy": "mail@ejemplo.com"
 }
 ```
@@ -110,7 +127,8 @@ Cada usuario autenticado tiene ademas una preferencia de notificacion:
   "time": "10:00",
   "timezone": "America/Argentina/Buenos_Aires",
   "enabled": true,
-  "lastSentDate": "2026-07-19"
+  "lastSentDate": "2026-07-19",
+  "lastInboxDate": "2026-07-19"
 }
 ```
 
@@ -130,13 +148,14 @@ Cuando un mensaje diario se envia, Lambda guarda tambien el ultimo recibido para
 
 El widget `Mensaje recibido` consulta solamente la bandeja del usuario autenticado mediante `GET /notification-inbox`.
 
+`NotificationFunction` revisa los mensajes cada minuto. Si el dispositivo no estaba registrado en el minuto exacto, reintenta durante las seis horas siguientes y solo marca el push como enviado cuando al menos un dispositivo lo acepta. `POST /notification-test` permite guardar el mensaje y enviarlo inmediatamente a la otra persona para comprobar la suscripcion.
+
 `state` contiene todo lo que ve la app:
 
 - `profile`: nombre, destino, fechas y firma.
 - `checklist`: queda guardado aunque ya no sea protagonista en el inicio.
 - `diary`: entradas del diario.
 - `messages`: mensajes emocionales y si fueron abiertos.
-- `plans`: planes compartidos para despues de la rotacion, con categoria, fecha, autor y estado.
 - `contacts`: contactos de emergencia.
 - `agenda`: eventos de la rotacion.
 
@@ -156,7 +175,8 @@ GET /state
 ```
 
 3. Si DynamoDB tiene datos, reemplaza la copia local con el estado de la nube.
-4. Si DynamoDB esta vacia, sube el estado local inicial.
+4. Consulta `GET /plans` y carga los planes independientes.
+5. Si DynamoDB esta vacia, sube el estado local inicial.
 
 Cuando se cambia algo:
 
@@ -170,6 +190,8 @@ PUT /state
 
 4. Lambda guarda el documento completo en DynamoDB.
 
+Los planes siguen otro flujo: agregar, marcar o borrar llama directamente a `/plans` y modifica solamente ese item. El resto de la lista no se sobrescribe.
+
 ## Regla importante
 
 Todos los usuarios comparten el documento principal:
@@ -178,7 +200,7 @@ Todos los usuarios comparten el documento principal:
 rotacion-rural-main
 ```
 
-Eso significa que vos y tu novia ven el mismo diario, agenda, contactos y mensajes. Si los dos editan eso al mismo tiempo, gana el ultimo guardado. El mensaje diario y su hora, en cambio, son personales para cada cuenta.
+Eso significa que vos y tu novia ven el mismo diario, agenda, contactos y mensajes. Si los dos editan eso al mismo tiempo, gana el ultimo guardado. Los planes se actualizan individualmente para evitar que una copia vieja borre toda la lista. El mensaje diario y su hora son personales para cada cuenta.
 
 ## Ver la base completa desde AWS Console
 
@@ -201,7 +223,7 @@ id = rotacion-rural-main
 7. Abrir el item.
 8. Expandir el campo `state`.
 
-Ahi podes ver todo: diario, mensajes, planes, contactos, agenda, checklist y perfil.
+Ahi podes ver diario, mensajes, contactos, agenda, checklist y perfil. Los planes aparecen como items separados cuyo `id` empieza con `rotacion-rural-plan#`.
 
 ## Ver la base completa por PowerShell
 
@@ -276,7 +298,7 @@ aws dynamodb scan `
   --select COUNT
 ```
 
-El conteo puede ser mayor que uno porque tambien incluye preferencias personales y suscripciones Web Push. Para validar el contenido principal, busca `id = rotacion-rural-main`.
+El conteo puede ser mayor que uno porque tambien incluye planes, preferencias personales y suscripciones Web Push. Para validar el contenido principal, busca `id = rotacion-rural-main`; para validar planes, filtra por `rotacion-rural-plan#`.
 
 Despues revisar:
 
@@ -326,7 +348,8 @@ Se puede mirar la tabla sin problema. Para editar manualmente desde AWS Console,
 
 - No borrar el item `rotacion-rural-main`.
 - No cambiar el tipo de `state`; debe seguir siendo un objeto/mapa.
-- No borrar `diary`, `messages`, `plans`, `contacts` ni `agenda` si queres conservar datos.
+- No borrar `diary`, `messages`, `contacts` ni `agenda` si queres conservar datos.
+- No borrar items `rotacion-rural-plan#...` salvo que quieras eliminar ese plan.
 - Si algo queda mal, la app podria fallar al sincronizar.
 
 Para cambios normales, conviene editar desde la app y usar DynamoDB solo para mirar o hacer backup.

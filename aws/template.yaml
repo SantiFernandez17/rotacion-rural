@@ -114,6 +114,7 @@ Resources:
           - GET
           - PUT
           - POST
+          - DELETE
           - OPTIONS
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
@@ -130,13 +131,18 @@ Resources:
     Properties:
       CodeUri: src/
       Handler: state.handler
+      Timeout: 30
       Environment:
         Variables:
           TABLE_NAME: !Ref StateTable
           STATE_ID: rotacion-rural-main
           NOTIFICATION_SETTINGS_PREFIX: rotacion-rural-notification-settings#
           NOTIFICATION_INBOX_PREFIX: rotacion-rural-notification-inbox#
+          PLAN_PREFIX: rotacion-rural-plan#
           ALLOWED_EMAILS: !Ref AllowedEmails
+          VAPID_SUBJECT: !Sub "mailto:${AWS::AccountId}@rotacion-rural.santuli.org"
+          VAPID_PUBLIC_KEY: !Ref VapidPublicKey
+          VAPID_PRIVATE_KEY: !Ref VapidPrivateKey
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref StateTable
@@ -177,6 +183,36 @@ Resources:
             ApiId: !Ref StateApi
             Path: /notification-inbox
             Method: GET
+        GetPlans:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StateApi
+            Path: /plans
+            Method: GET
+        PostPlan:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StateApi
+            Path: /plans
+            Method: POST
+        PutPlan:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StateApi
+            Path: /plans/{id}
+            Method: PUT
+        DeletePlan:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StateApi
+            Path: /plans/{id}
+            Method: DELETE
+        TestNotification:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StateApi
+            Path: /notification-test
+            Method: POST
 
   NotificationFunction:
     Type: AWS::Serverless::Function

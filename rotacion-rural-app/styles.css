@@ -330,6 +330,12 @@ h1 {
   font-weight: 750;
 }
 
+.sync-success {
+  margin-top: 5px;
+  color: var(--green);
+  font-weight: 750;
+}
+
 .sync-actions {
   display: flex;
   flex-wrap: wrap;

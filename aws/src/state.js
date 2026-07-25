@@ -219,8 +219,8 @@ exports.handler = async (event) => {
     await client.send(new UpdateCommand({
       TableName: tableName,
       Key: { id: notificationSettingsId(email) },
-      UpdateExpression: "SET ownerEmail = :ownerEmail, #message = :message, enabled = :enabled, #time = :time, timezone = :timezone, updatedAt = :updatedAt, updatedBy = :updatedBy",
-      ExpressionAttributeNames: { "#message": "message", "#time": "time" },
+      UpdateExpression: "SET ownerEmail = :ownerEmail, #message = :message, enabled = :enabled, #time = :time, #timezone = :timezone, updatedAt = :updatedAt, updatedBy = :updatedBy",
+      ExpressionAttributeNames: { "#message": "message", "#time": "time", "#timezone": "timezone" },
       ExpressionAttributeValues: {
         ":ownerEmail": email,
         ":message": message,

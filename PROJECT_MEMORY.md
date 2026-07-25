@@ -1,6 +1,6 @@
 # Memoria del proyecto: Rotacion Rural
 
-Actualizada: 2026-07-21
+Actualizada: 2026-07-25
 
 ## Proposito
 
@@ -113,6 +113,12 @@ Cada cambio visual que deba verse en la PWA debe aumentar `CACHE_NAME` en `rotac
 - Se verificaron 4 planes independientes en DynamoDB.
 - Se verifico que intentar actualizar un plan inexistente devuelve `404` y no crea un item vacio.
 - No se envio una notificacion real durante la comprobacion tecnica para no enviar mensajes inesperados.
+
+## Correccion del 2026-07-25
+
+- El boton "Enviar prueba ahora" fallaba antes del envio porque DynamoDB reserva el atributo `timezone`.
+- Se corrigio `aws/src/state.js` usando un alias de atributo en la actualizacion de configuracion de notificaciones.
+- La funcion desplegada respondio `200 OK` al guardar una configuracion temporal de auditoria. El item temporal fue eliminado y no se envio ninguna notificacion real durante esa prueba.
 
 ## Criterios para cambios futuros
 

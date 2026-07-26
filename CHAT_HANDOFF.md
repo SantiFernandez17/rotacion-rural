@@ -71,8 +71,11 @@ Como trabajar y publicar:
 No usar git reset --hard, git checkout -- ni borrar datos de DynamoDB sin una instruccion explicita.
 No exponer tokens, contrasenas ni claves VAPID privadas en el chat, commits o documentos.
 
-Estado conocido al 2026-07-25:
-- Ultimo commit publicado: 93a9d64 (Corregir guardado de notificaciones).
+Estado conocido al 2026-07-26:
+- Los mensajes diarios, las cartas compartidas y los planes muestran un cartel solamente despues de que AWS confirma el guardado.
+- Frontend publicado en Cloudflare con la version d1e26435-d33e-46b8-a088-4c2bd6d39864.
+- Cache PWA actual: rotacion-rural-v12.
+- El despliegue de Cloudflare usa wrangler.jsonc con assets.directory; no volver a pasar la carpeta como argumento interactivo de wrangler deploy.
 - Stack AWS: sam-app, region us-east-1.
 - Tabla DynamoDB: rotacion-rural-state.
 - API: https://vry8qsj2yd.execute-api.us-east-1.amazonaws.com

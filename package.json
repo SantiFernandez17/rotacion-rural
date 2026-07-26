@@ -1,0 +1,10 @@
+{
+  "name": "rotacion-rural",
+  "private": true,
+  "scripts": {
+    "deploy:cloudflare": "powershell -ExecutionPolicy Bypass -File ./deploy-cloudflare.ps1"
+  },
+  "devDependencies": {
+    "wrangler": "4.114.0"
+  }
+}

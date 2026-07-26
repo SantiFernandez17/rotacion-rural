@@ -86,6 +86,8 @@ let notificationStatus = {
   error: ""
 };
 let saveTimer = null;
+let databaseNoticeTimer = null;
+let pendingCloudSuccessMessage = "";
 
 const app = document.querySelector("#app");
 const navButtons = [...document.querySelectorAll(".nav-button")];
@@ -148,9 +150,9 @@ function loadState() {
   }
 }
 
-function saveState() {
+function saveState(successMessage = "") {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  queueCloudSave();
+  queueCloudSave(successMessage);
 }
 
 function clone(value) {
@@ -699,7 +701,7 @@ function handleSubmit(event) {
     return;
   }
 
-  saveState();
+  saveState(form.dataset.form === "message" ? "El mensaje se cargó correctamente en la base de datos." : "");
   form.reset();
   render();
 }
@@ -767,14 +769,14 @@ function handleClick(event) {
 
   removeByDataset(target, "deleteCheck", "checklist");
   removeByDataset(target, "deleteDiary", "diary");
-  removeByDataset(target, "deleteMessage", "messages");
+  removeByDataset(target, "deleteMessage", "messages", "El mensaje se eliminó correctamente de la base de datos.");
   removeByDataset(target, "deleteContact", "contacts");
   removeByDataset(target, "deleteAgenda", "agenda");
 
   if (target.dataset.toggleMessage) {
     const message = state.messages.find((entry) => entry.id === target.dataset.toggleMessage);
     if (message) message.opened = !message.opened;
-    saveState();
+    saveState("El mensaje se actualizó correctamente en la base de datos.");
     render();
   }
 
@@ -797,12 +799,12 @@ function handleChange(event) {
   render();
 }
 
-function removeByDataset(target, datasetKey, collectionKey) {
+function removeByDataset(target, datasetKey, collectionKey, successMessage = "") {
   const id = target.dataset[datasetKey];
   if (!id) return;
 
   state[collectionKey] = state[collectionKey].filter((entry) => entry.id !== id);
-  saveState();
+  saveState(successMessage);
   render();
 }
 
@@ -980,6 +982,7 @@ async function addPlanToCloud(data, form) {
     state.plans.unshift(result.plan);
     savePlansLocally();
     form.reset();
+    showDatabaseSuccess("El plan se cargó correctamente en la base de datos.");
   } catch (error) {
     cloudStatus.error = error.message || "No se pudo guardar el plan.";
   }
@@ -1008,6 +1011,7 @@ async function togglePlanInCloud(planId) {
     if (!response.ok) throw new Error(result.message || "No se pudo actualizar el plan.");
     state.plans = state.plans.map((item) => item.id === planId ? result.plan : item);
     savePlansLocally();
+    showDatabaseSuccess("El plan se actualizó correctamente en la base de datos.");
   } catch (error) {
     cloudStatus.error = error.message || "No se pudo actualizar el plan.";
   }
@@ -1032,6 +1036,7 @@ async function deletePlanFromCloud(planId) {
     if (!response.ok) throw new Error(result.message || "No se pudo borrar el plan.");
     state.plans = state.plans.filter((item) => item.id !== planId);
     savePlansLocally();
+    showDatabaseSuccess("El plan se eliminó correctamente de la base de datos.");
   } catch (error) {
     cloudStatus.error = error.message || "No se pudo borrar el plan.";
   }
@@ -1114,7 +1119,8 @@ async function saveNotificationSettings() {
     if (!response.ok) throw new Error(data.message || "No se pudo guardar el mensaje diario.");
     notificationStatus.message = message;
     notificationStatus.time = time;
-    notificationStatus.actionMessage = "Mensaje y horario guardados.";
+    notificationStatus.actionMessage = "Mensaje y horario guardados en la base de datos.";
+    showDatabaseSuccess("El mensaje se cargó correctamente en la base de datos.");
     saved = true;
   } catch (error) {
     notificationStatus.error = error.message || "No se pudo guardar el mensaje diario.";
@@ -1351,16 +1357,19 @@ async function syncFromCloud() {
   }
 }
 
-function queueCloudSave() {
+function queueCloudSave(successMessage = "") {
   if (!cloudStatus.enabled || !getSession()) return;
 
+  if (successMessage) pendingCloudSuccessMessage = successMessage;
   window.clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => {
-    saveStateToCloud();
+    const queuedSuccessMessage = pendingCloudSuccessMessage;
+    pendingCloudSuccessMessage = "";
+    saveStateToCloud(queuedSuccessMessage);
   }, 700);
 }
 
-async function saveStateToCloud() {
+async function saveStateToCloud(successMessage = "") {
   if (!cloudStatus.enabled || !getSession()) return;
 
   cloudStatus.syncing = true;
@@ -1384,12 +1393,29 @@ async function saveStateToCloud() {
     const data = await response.json();
     cloudStatus.lastSync = data.updatedAt || new Date().toISOString();
     cloudStatus.updatedBy = data.updatedBy || cloudStatus.email;
+    if (successMessage) showDatabaseSuccess(successMessage);
   } catch (error) {
     cloudStatus.error = error.message || "Fallo el guardado en AWS.";
   } finally {
     cloudStatus.syncing = false;
     render();
   }
+}
+
+function showDatabaseSuccess(message) {
+  const root = document.querySelector("#database-notice-root");
+  if (!root) return;
+
+  window.clearTimeout(databaseNoticeTimer);
+  root.innerHTML = `
+    <div class="database-notice" role="status">
+      <span class="database-notice__icon" aria-hidden="true">&#10003;</span>
+      <span>${escapeHtml(message)}</span>
+    </div>
+  `;
+  databaseNoticeTimer = window.setTimeout(() => {
+    root.replaceChildren();
+  }, 4500);
 }
 
 function logout(redirect = true) {

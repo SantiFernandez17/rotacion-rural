@@ -1,6 +1,6 @@
 # Memoria del proyecto: Rotacion Rural
 
-Actualizada: 2026-07-25
+Actualizada: 2026-07-26
 
 ## Proposito
 
@@ -95,7 +95,7 @@ Desde la raiz del repositorio:
 
 El script prepara `.cloudflare-deploy/` y publica el Worker `rotacion-rural-totoe`. No agregar esa carpeta al repositorio.
 
-Cada cambio visual que deba verse en la PWA debe aumentar `CACHE_NAME` en `rotacion-rural-app/service-worker.js`. La version actual es `rotacion-rural-v11`.
+Cada cambio visual que deba verse en la PWA debe aumentar `CACHE_NAME` en `rotacion-rural-app/service-worker.js`. La version actual es `rotacion-rural-v12`.
 
 ## Verificaciones utiles
 
@@ -119,6 +119,15 @@ Cada cambio visual que deba verse en la PWA debe aumentar `CACHE_NAME` en `rotac
 - El boton "Enviar prueba ahora" fallaba antes del envio porque DynamoDB reserva el atributo `timezone`.
 - Se corrigio `aws/src/state.js` usando un alias de atributo en la actualizacion de configuracion de notificaciones.
 - La funcion desplegada respondio `200 OK` al guardar una configuracion temporal de auditoria. El item temporal fue eliminado y no se envio ninguna notificacion real durante esa prueba.
+
+## Confirmaciones de guardado del 2026-07-26
+
+- Los cambios en el mensaje diario muestran un cartel despues de que `PUT /notification-settings` responde correctamente.
+- Agregar, actualizar o eliminar una carta compartida muestra el cartel despues de que `PUT /state` confirma la escritura.
+- Agregar, marcar o eliminar un plan muestra el cartel despues de que el endpoint individual de `/plans` confirma la operacion.
+- El cartel es flotante, accesible y desaparece automaticamente despues de unos segundos.
+- El frontend se publico en Cloudflare con la version `d1e26435-d33e-46b8-a088-4c2bd6d39864`.
+- El despliegue usa `wrangler.jsonc` con `assets.directory` y Wrangler fijado como dependencia de desarrollo. La sintaxis anterior que pasaba la carpeta como argumento directo dejo de ser adecuada para ejecuciones no interactivas.
 
 ## Criterios para cambios futuros
 

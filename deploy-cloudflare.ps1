@@ -25,4 +25,4 @@ foreach ($file in $publicFiles) {
 
 Copy-Item -LiteralPath (Join-Path $source "assets") -Destination (Join-Path $deploy "assets") -Recurse
 
-npx wrangler@latest deploy $deploy --name rotacion-rural-totoe --compatibility-date 2026-07-02
+npx wrangler deploy --config (Join-Path $root "wrangler.jsonc")

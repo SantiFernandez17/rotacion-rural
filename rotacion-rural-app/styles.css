@@ -336,6 +336,54 @@ h1 {
   font-weight: 750;
 }
 
+.database-notice-root {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top));
+  left: 50%;
+  z-index: 100;
+  width: min(520px, calc(100% - 24px));
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.database-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 15px;
+  border: 1px solid rgba(58, 126, 83, 0.38);
+  border-radius: var(--radius);
+  background: rgba(241, 251, 244, 0.98);
+  color: var(--green);
+  box-shadow: 0 12px 30px rgba(58, 126, 83, 0.2);
+  font-weight: 850;
+  animation: database-notice-in 180ms ease-out;
+}
+
+.database-notice__icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--green);
+  color: white;
+  font-size: 0.9rem;
+}
+
+@keyframes database-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .sync-actions {
   display: flex;
   flex-wrap: wrap;

@@ -73,8 +73,10 @@ No exponer tokens, contrasenas ni claves VAPID privadas en el chat, commits o do
 
 Estado conocido al 2026-07-26:
 - Los mensajes diarios, las cartas compartidas y los planes muestran un cartel solamente despues de que AWS confirma el guardado.
-- Frontend publicado en Cloudflare con la version d1e26435-d33e-46b8-a088-4c2bd6d39864.
-- Cache PWA actual: rotacion-rural-v12.
+- La portada usa un tema oscuro y muestra cuenta regresiva, ultimo mensaje recibido, planes pendientes y el formulario para programar el mensaje diario.
+- La navegacion inferior conserva solamente Inicio y Mensajes; Diario, SOS y Agenda siguen en los datos historicos pero ya no tienen pestanas.
+- Frontend publicado en Cloudflare con la version f13e157c-d232-4851-a31c-228f26608f51.
+- Cache PWA actual: rotacion-rural-v13.
 - El despliegue de Cloudflare usa wrangler.jsonc con assets.directory; no volver a pasar la carpeta como argumento interactivo de wrangler deploy.
 - Stack AWS: sam-app, region us-east-1.
 - Tabla DynamoDB: rotacion-rural-state.

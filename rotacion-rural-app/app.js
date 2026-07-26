@@ -190,90 +190,63 @@ function render() {
 }
 
 function renderHome() {
-  const nextEvent = getNextEvent();
-  const lastEntry = [...state.diary].sort((a, b) => b.date.localeCompare(a.date))[0];
-  const primaryContact = state.contacts.find((entry) => entry.phone);
-  const unopenedMessages = state.messages.filter((message) => !message.opened).length;
-
   return `
-    ${sectionHead(`Hola, ${escapeHtml(state.profile.name)}`, "Un tablero corto para acompanar la rotacion, escribir lo vivido y tener lo importante a mano.")}
-    ${renderCloudPanel()}
-    ${renderDashboardWidgets(nextEvent)}
-    <section class="grid three home-actions">
-      <article class="card entry">
-        <div class="row">
-          <span class="pill">Diario</span>
-          <button class="button ghost" data-go="diary">Escribir</button>
-        </div>
-        ${
-          lastEntry
-            ? `<h3>${escapeHtml(lastEntry.title || "Ultima entrada")}</h3><p>${escapeHtml(lastEntry.learned || lastEntry.good || "Hay una entrada guardada.")}</p>`
-            : `<h3>Todavia no hay entradas</h3><p>Puede guardar aprendizajes, momentos lindos y cosas para conversar despues.</p>`
-        }
-      </article>
-      <article class="card entry">
-        <div class="row">
-          <span class="pill">Mensajes</span>
-          <button class="button ghost" data-go="love">Abrir</button>
-        </div>
-        <h3>${unopenedMessages ? `${unopenedMessages} por abrir` : "Todos abiertos"}</h3>
-        <p>${unopenedMessages ? "Hay cartas cortas para cuando necesite una pausa, un mimo o cerrar un dia largo." : "Podes agregarle un mensaje nuevo para que aparezca aca."}</p>
-      </article>
-      <article class="card entry">
-        <div class="row">
-          <span class="pill">SOS</span>
-          <button class="button ghost" data-go="contacts">Contactos</button>
-        </div>
-        <h3>${primaryContact ? escapeHtml(primaryContact.name) : "Sin telefono cargado"}</h3>
-        <p>${primaryContact ? escapeHtml(primaryContact.role || primaryContact.phone) : "Carga al menos un numero importante para llamar desde la app."}</p>
-        ${primaryContact ? `<a class="button secondary full" href="tel:${cleanPhone(primaryContact.phone)}">☎ Llamar</a>` : ""}
-      </article>
+    <section class="home-heading">
+      <span class="home-kicker">Su espacio compartido</span>
+      <h2>Hola, ${escapeHtml(state.profile.name)}</h2>
+      <p>La cuenta regresiva, los planes para la vuelta y un mensaje para sentirse cerca todos los días.</p>
     </section>
+    ${renderDashboardWidgets()}
+    ${cloudStatus.signedIn ? renderNotificationPanel() : renderCloudPanel()}
+    ${cloudStatus.signedIn ? renderCloudPanel() : ""}
   `;
 }
 
-function renderDashboardWidgets(nextEvent) {
+function renderDashboardWidgets() {
   const remaining = daysLeft();
   const receivedMessage = notificationStatus.receivedMessage;
   const pendingPlans = state.plans.filter((entry) => !entry.done);
-  const planPreview = pendingPlans.slice(0, 3);
+  const planPreview = pendingPlans.slice(0, 4);
 
   return `
-    <section class="widget-grid" aria-label="Resumen de la rotacion">
-      <article class="dashboard-widget countdown-widget">
-        <span class="widget-label">Cuenta regresiva</span>
-        <strong class="widget-number">${remaining}</strong>
-        <p>${remaining === 1 ? "dia" : "dias"} hasta el 28 de agosto</p>
+    <section class="home-overview" aria-label="Resumen de la rotacion">
+      <article class="home-dashboard-card home-countdown">
+        <div class="home-card-head">
+          <span class="widget-label">Cuenta regresiva</span>
+          <span class="home-card-icon" aria-hidden="true">⌛</span>
+        </div>
+        <div class="home-countdown-value"><strong>${remaining}</strong><span>${remaining === 1 ? "día" : "días"}</span></div>
         <div class="progress" aria-label="${rotationProgress()}% de la rotacion transcurrido"><span style="--value: ${rotationProgress()}%"></span></div>
+        <p>Hasta el 28 de agosto · ${rotationProgress()}% del camino recorrido</p>
       </article>
-      <article class="dashboard-widget">
-        <div class="row">
-          <span class="widget-label">Proxima actividad</span>
-          <button class="icon-button" data-go="agenda" aria-label="Abrir agenda" title="Abrir agenda">&#8250;</button>
+      <article class="home-dashboard-card home-received-message">
+        <div class="home-card-head">
+          <span class="widget-label">Último mensaje recibido</span>
+          <span class="home-card-icon home-card-icon--accent" aria-hidden="true">♡</span>
         </div>
         ${
-          nextEvent
-            ? `<strong class="widget-title">${escapeHtml(nextEvent.title)}</strong><p>${formatDate(nextEvent.date)}${nextEvent.time ? ` a las ${escapeHtml(nextEvent.time)}` : ""}</p><span class="widget-meta">${escapeHtml(nextEvent.place || "Sin lugar cargado")}</span>`
-            : `<strong class="widget-title">Sin actividades pendientes</strong><p>La proxima fecha que agreguen aparecera aca.</p>`
-        }
-      </article>
-      <article class="dashboard-widget message-widget">
-        <span class="widget-label">Mensaje recibido</span>
-        ${
           receivedMessage
-            ? `<p class="widget-message">${escapeHtml(receivedMessage)}</p><span class="widget-meta">${notificationStatus.receivedAt ? `Recibido ${formatDateTime(notificationStatus.receivedAt)}` : "Recibido recientemente"}</span>`
-            : `<strong class="widget-title">Todavia no llego ninguno</strong><p>El ultimo mensaje diario recibido quedara guardado aca.</p>`
+            ? `<blockquote class="home-message-text">“${escapeHtml(receivedMessage)}”</blockquote><span class="widget-meta">${notificationStatus.receivedAt ? `Recibido ${formatDateTime(notificationStatus.receivedAt)}` : "Recibido recientemente"}</span>`
+            : `<div class="home-empty-message"><strong>Todavía no llegó ninguno</strong><p>Cuando recibas un mensaje diario va a quedar guardado acá.</p></div>`
         }
       </article>
-      <article class="dashboard-widget plans-widget">
-        <div class="row">
-          <span class="widget-label">Planes para la vuelta</span>
-          <button class="icon-button" data-go="plans" aria-label="Abrir planes" title="Abrir planes">&#8250;</button>
+      <article class="home-dashboard-card home-plans">
+        <div class="home-card-head">
+          <div>
+            <span class="widget-label">Planes para la vuelta</span>
+            <h3>${pendingPlans.length ? `${pendingPlans.length} ${pendingPlans.length === 1 ? "idea pendiente" : "ideas pendientes"}` : "Empiecen a imaginar la vuelta"}</h3>
+          </div>
+          <button class="button secondary" data-go="plans">Ver todos</button>
         </div>
         ${
           planPreview.length
-            ? `<ul class="widget-list">${planPreview.map((entry) => `<li>${escapeHtml(entry.title)}</li>`).join("")}</ul><span class="widget-meta">${remaining ? `${pendingPlans.length} ${pendingPlans.length === 1 ? "idea" : "ideas"} · faltan ${remaining} dias` : "Ahora si: elijan cual hacer primero"}</span>`
-            : `<strong class="widget-title">Todavia no hay planes</strong><p>Guarden salidas, comidas, viajes y sorpresas para la vuelta.</p>`
+            ? `<div class="home-plan-list">${planPreview.map((entry) => `
+                <div class="home-plan-row">
+                  <span class="home-plan-marker" aria-hidden="true"></span>
+                  <div><strong>${escapeHtml(entry.title)}</strong><small>${entry.date ? formatDate(entry.date) : escapeHtml(entry.category || "Plan sin fecha")}</small></div>
+                </div>
+              `).join("")}</div>`
+            : `<div class="home-empty-plans"><p>Guarden salidas, comidas, viajes y sorpresas para cuando termine la rotación.</p><button class="button" data-go="plans">Agregar el primer plan</button></div>`
         }
       </article>
     </section>
@@ -355,7 +328,7 @@ function renderCloudPanel() {
       <section class="sync-panel">
         <div>
           <strong>Nube AWS</strong>
-          <p>Inicia sesion para sincronizar diario, mensajes, agenda y contactos.</p>
+          <p>Iniciá sesión para ver los planes compartidos y programar mensajes.</p>
           ${cloudStatus.error ? `<p class="sync-error">${escapeHtml(cloudStatus.error)}</p>` : ""}
         </div>
         <button class="button" data-login>Iniciar sesion</button>
@@ -364,7 +337,7 @@ function renderCloudPanel() {
   }
 
   return `
-    <section class="sync-panel">
+    <section class="sync-panel sync-panel--compact">
       <div>
         <strong>${escapeHtml(cloudStatus.email || "Sesion activa")}</strong>
         <p>${cloudStatus.syncing ? "Sincronizando..." : cloudStatus.lastSync ? `Ultima sincronizacion: ${formatDateTime(cloudStatus.lastSync)}` : "Sesion iniciada."}</p>
@@ -376,28 +349,36 @@ function renderCloudPanel() {
         <button class="button ghost" data-logout>Salir</button>
       </div>
     </section>
-    ${renderNotificationPanel()}
   `;
 }
 
 function renderNotificationPanel() {
-  if (!notificationStatus.supported) {
-    return `<section class="sync-panel"><div><strong>Notificaciones</strong><p>Este navegador no permite Web Push. Probá con Chrome, Edge o una app agregada a la pantalla de inicio en iPhone.</p></div></section>`;
-  }
-
   return `
-    <section class="form-panel notification-panel">
-      <div class="row"><div><strong>Tu mensaje diario</strong><p>Se enviará a la otra persona todos los días a la hora que elijas.</p></div><span class="pill">${notificationStatus.subscribed ? "Activo" : "Sin activar"}</span></div>
-      <label class="field">Mensaje para la otra persona
-        <textarea data-notification-message maxlength="500">${escapeHtml(notificationStatus.message)}</textarea>
-      </label>
-      <label class="field">Hora de envío
-        <input type="time" data-notification-time value="${escapeAttr(notificationStatus.time)}" required />
-      </label>
-      <div class="row notification-actions">
-        <button class="button" data-enable-notifications ${notificationStatus.loading ? "disabled" : ""}>${notificationStatus.subscribed ? "Notificaciones activas" : "Activar en este navegador"}</button>
+    <section class="form-panel notification-panel notification-composer">
+      <div class="composer-heading">
+        <div>
+          <span class="widget-label">Mensaje diario</span>
+          <h3>Escribí y programá un mensaje</h3>
+          <p>Se enviará a la otra persona todos los días a la hora que elijas.</p>
+        </div>
+        <span class="pill">${notificationStatus.subscribed ? "Notificaciones activas" : "Pendiente de activar"}</span>
+      </div>
+      <div class="composer-grid">
+        <label class="field composer-message">Mensaje para la otra persona
+          <textarea data-notification-message maxlength="500" placeholder="Escribí algo lindo para acompañar su día">${escapeHtml(notificationStatus.message)}</textarea>
+        </label>
+        <div class="composer-schedule">
+          <label class="field">Hora de envío
+            <input type="time" data-notification-time value="${escapeAttr(notificationStatus.time)}" required />
+          </label>
+          <p>Horario de Argentina. Podés cambiarlo cuando quieras.</p>
+        </div>
+      </div>
+      ${!notificationStatus.supported ? `<p class="composer-note">Podés guardar y enviar el mensaje aunque este navegador no pueda recibir notificaciones.</p>` : ""}
+      <div class="notification-actions">
         <button class="button secondary" data-save-notification ${notificationStatus.loading ? "disabled" : ""}>Guardar mensaje</button>
         <button class="button ghost" data-test-notification ${notificationStatus.loading ? "disabled" : ""}>Enviar prueba ahora</button>
+        ${notificationStatus.supported ? `<button class="button" data-enable-notifications ${notificationStatus.loading ? "disabled" : ""}>${notificationStatus.subscribed ? "Notificaciones activas" : "Activar en este navegador"}</button>` : ""}
       </div>
       ${notificationStatus.actionMessage ? `<p class="sync-success">${escapeHtml(notificationStatus.actionMessage)}</p>` : ""}
       ${notificationStatus.error ? `<p class="sync-error">${escapeHtml(notificationStatus.error)}</p>` : ""}

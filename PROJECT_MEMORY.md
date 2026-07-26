@@ -95,7 +95,7 @@ Desde la raiz del repositorio:
 
 El script prepara `.cloudflare-deploy/` y publica el Worker `rotacion-rural-totoe`. No agregar esa carpeta al repositorio.
 
-Cada cambio visual que deba verse en la PWA debe aumentar `CACHE_NAME` en `rotacion-rural-app/service-worker.js`. La version actual es `rotacion-rural-v12`.
+Cada cambio visual que deba verse en la PWA debe aumentar `CACHE_NAME` en `rotacion-rural-app/service-worker.js`. La version actual es `rotacion-rural-v13`.
 
 ## Verificaciones utiles
 
@@ -128,6 +128,15 @@ Cada cambio visual que deba verse en la PWA debe aumentar `CACHE_NAME` en `rotac
 - El cartel es flotante, accesible y desaparece automaticamente despues de unos segundos.
 - El frontend se publico en Cloudflare con la version `d1e26435-d33e-46b8-a088-4c2bd6d39864`.
 - El despliegue usa `wrangler.jsonc` con `assets.directory` y Wrangler fijado como dependencia de desarrollo. La sintaxis anterior que pasaba la carpeta como argumento directo dejo de ser adecuada para ejecuciones no interactivas.
+
+## Rediseño de la portada del 2026-07-26
+
+- La aplicacion usa una paleta oscura calida, con mayor contraste y tarjetas mas amplias.
+- La portada concentra los dias restantes, el ultimo mensaje recibido, hasta cuatro planes pendientes y el formulario para escribir y programar el mensaje diario.
+- Los planes completos siguen accesibles desde el boton `Ver todos`.
+- La navegacion inferior muestra unicamente `Inicio` y `Mensajes`. Se retiraron las pestanas `Diario`, `SOS` y `Agenda` sin borrar sus datos guardados.
+- Se verifico la vista con datos simulados en 390x844 y 1280x900, ademas de los flujos de guardado, acceso a planes y navegacion.
+- El frontend se publico en Cloudflare con la version `f13e157c-d232-4851-a31c-228f26608f51`.
 
 ## Criterios para cambios futuros
 

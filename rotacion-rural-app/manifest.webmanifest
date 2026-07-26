@@ -1,12 +1,12 @@
 {
   "name": "Rotacion rural",
   "short_name": "Rotacion",
-  "description": "Checklist, diario, agenda, contactos y mensajes para una rotacion rural.",
+  "description": "Cuenta regresiva, planes y mensajes compartidos durante una rotacion rural.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f6eee4",
-  "theme_color": "#f6eee4",
+  "background_color": "#141210",
+  "theme_color": "#141210",
   "orientation": "portrait",
   "icons": [
     {

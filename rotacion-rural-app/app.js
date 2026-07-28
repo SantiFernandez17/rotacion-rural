@@ -2,6 +2,9 @@ const STORAGE_KEY = "rotacionRuralApp:v1";
 const AUTH_STORAGE_KEY = "rotacionRuralApp:awsAuth:v1";
 const PKCE_STORAGE_KEY = "rotacionRuralApp:pkce:v1";
 const ROTATION_END_DATE = "2026-08-28";
+const NEXT_COUNTDOWN_DATE = "2026-08-06";
+const PLAN_WINDOW_START = "2026-08-06";
+const PLAN_WINDOW_END = "2026-08-12";
 const awsConfig = window.ROTACION_AWS_CONFIG || { enabled: false };
 
 const seedData = {
@@ -203,22 +206,14 @@ function renderHome() {
 }
 
 function renderDashboardWidgets() {
-  const remaining = daysLeft();
   const receivedMessage = notificationStatus.receivedMessage;
   const pendingPlans = state.plans.filter((entry) => !entry.done);
   const planPreview = pendingPlans.slice(0, 4);
 
   return `
     <section class="home-overview" aria-label="Resumen de la rotacion">
-      <article class="home-dashboard-card home-countdown">
-        <div class="home-card-head">
-          <span class="widget-label">Cuenta regresiva</span>
-          <span class="home-card-icon" aria-hidden="true">⌛</span>
-        </div>
-        <div class="home-countdown-value"><strong>${remaining}</strong><span>${remaining === 1 ? "día" : "días"}</span></div>
-        <div class="progress" aria-label="${rotationProgress()}% de la rotacion transcurrido"><span style="--value: ${rotationProgress()}%"></span></div>
-        <p>Hasta el 28 de agosto · ${rotationProgress()}% del camino recorrido</p>
-      </article>
+      ${renderCountdownCard("Fin de la rotación", state.profile.endDate, "⌛")}
+      ${renderCountdownCard("6 de agosto", NEXT_COUNTDOWN_DATE, "★", "home-countdown--next")}
       <article class="home-dashboard-card home-received-message">
         <div class="home-card-head">
           <span class="widget-label">Último mensaje recibido</span>
@@ -253,6 +248,23 @@ function renderDashboardWidgets() {
   `;
 }
 
+function renderCountdownCard(label, targetDate, icon, modifier = "") {
+  const remaining = daysLeft(targetDate);
+  const percent = rotationProgress(targetDate);
+
+  return `
+    <article class="home-dashboard-card home-countdown ${modifier}">
+      <div class="home-card-head">
+        <span class="widget-label">${label}</span>
+        <span class="home-card-icon" aria-hidden="true">${icon}</span>
+      </div>
+      <div class="home-countdown-value"><strong>${remaining}</strong><span>${remaining === 1 ? "día" : "días"}</span></div>
+      <div class="progress" aria-label="${percent}% del tiempo transcurrido"><span style="--value: ${percent}%"></span></div>
+      <p>Hasta el ${formatLongDate(targetDate)} · ${percent}% del camino recorrido</p>
+    </article>
+  `;
+}
+
 function renderPlans() {
   const visiblePlans = [...state.plans]
     .filter((entry) => planFilter === "all" || (planFilter === "pending" ? !entry.done : entry.done))
@@ -260,7 +272,7 @@ function renderPlans() {
 
   return `
     <div class="view-back"><button class="icon-button" data-go="home" aria-label="Volver al inicio" title="Volver al inicio">&#8592;</button></div>
-    ${sectionHead("Planes para la vuelta", "Una lista compartida para guardar todo lo que quieran hacer cuando termine la rotacion.")}
+    ${sectionHead("Planes para la vuelta", "Una lista compartida para guardar todo lo que quieran hacer. Las fechas van del 6 al 12 de agosto.")}
     <form data-form="plan" class="form-panel">
       <div class="form-grid">
         <label class="field">Plan
@@ -275,8 +287,8 @@ function renderPlans() {
             <option>Sorpresa</option>
           </select>
         </label>
-        <label class="field">Fecha opcional
-          <input name="date" type="date" min="${ROTATION_END_DATE}" />
+        <label class="field">Fecha opcional (6 al 12 de agosto)
+          <input name="date" type="date" min="${PLAN_WINDOW_START}" max="${PLAN_WINDOW_END}" />
         </label>
       </div>
       <button class="button" type="submit">＋ Agregar plan</button>
@@ -821,18 +833,18 @@ function checklistProgress(items) {
   return { total, done, percent };
 }
 
-function daysLeft() {
+function daysLeft(targetDate = state.profile.endDate) {
   const start = new Date(`${state.profile.startDate}T00:00:00`);
-  const end = new Date(`${state.profile.endDate}T00:00:00`);
+  const end = new Date(`${targetDate}T00:00:00`);
   const today = new Date();
   const from = today < start ? start : today;
   const diff = Math.ceil((end - from) / 86400000);
   return Math.max(diff, 0);
 }
 
-function rotationProgress() {
+function rotationProgress(targetDate = state.profile.endDate) {
   const start = new Date(`${state.profile.startDate}T00:00:00`);
-  const end = new Date(`${state.profile.endDate}T00:00:00`);
+  const end = new Date(`${targetDate}T00:00:00`);
   const today = new Date();
   const total = Math.max(end - start, 1);
   const elapsed = Math.min(Math.max(today - start, 0), total);
@@ -864,6 +876,14 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function formatLongDate(value) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "numeric",
+    month: "long"
+  }).format(new Date(`${value}T00:00:00`));
 }
 
 function formatDate(value) {

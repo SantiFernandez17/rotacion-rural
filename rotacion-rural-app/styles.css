@@ -206,8 +206,14 @@ h1 {
     rgba(30, 27, 24, 0.96);
 }
 
+.home-countdown--next {
+  background:
+    linear-gradient(145deg, rgba(134, 173, 145, 0.18), transparent 58%),
+    rgba(30, 27, 24, 0.96);
+}
+
 .home-received-message {
-  grid-column: span 8;
+  grid-column: span 4;
   background:
     linear-gradient(145deg, rgba(125, 164, 182, 0.13), transparent 65%),
     rgba(30, 27, 24, 0.96);
@@ -889,11 +895,11 @@ details.form-panel summary {
 
 @media (min-width: 761px) and (max-width: 980px) {
   .home-countdown {
-    grid-column: span 5;
+    grid-column: span 6;
   }
 
   .home-received-message {
-    grid-column: span 7;
+    grid-column: 1 / -1;
   }
 }
 

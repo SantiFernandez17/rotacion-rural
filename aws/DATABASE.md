@@ -109,7 +109,8 @@ Cada plan se guarda en un item independiente para que un telefono con una copia 
   "planId": "<id-del-plan>",
   "title": "Cena cuando vuelva",
   "category": "Comida",
-  "date": "2026-08-29",
+  "date": "2026-08-06",
+  "timeSlot": "night",
   "createdBy": "mail@ejemplo.com",
   "done": false,
   "updatedAt": "2026-07-20T21:00:00.000Z",
@@ -190,7 +191,7 @@ PUT /state
 
 4. Lambda guarda el documento completo en DynamoDB.
 
-Los planes siguen otro flujo: agregar, marcar o borrar llama directamente a `/plans` y modifica solamente ese item. El resto de la lista no se sobrescribe.
+Los planes siguen otro flujo: agregar, marcar, asignar al calendario o borrar llama directamente a `/plans` y modifica solamente ese item. El resto de la lista no se sobrescribe. La agenda de Merlo usa `date` junto con `timeSlot`; los valores validos de franja son `morning`, `afternoon` y `night`.
 
 ## Regla importante
 

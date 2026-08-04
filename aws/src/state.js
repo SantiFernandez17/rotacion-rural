@@ -127,12 +127,24 @@ exports.handler = async (event) => {
     }
 
     const planId = safePlanId(input?.id);
+    const date = String(input?.date || "").slice(0, 10);
+    const timeSlot = normalizeTimeSlot(input?.timeSlot);
+    if (date && !isValidPlanDate(date)) {
+      return json(400, { message: "La fecha del plan no es valida." });
+    }
+    if (input?.timeSlot && !timeSlot) {
+      return json(400, { message: "La franja del plan no es valida." });
+    }
+    if (timeSlot && !date) {
+      return json(400, { message: "Una franja horaria necesita una fecha." });
+    }
     const item = {
       id: `${planPrefix}${planId}`,
       planId,
       title,
       category: String(input?.category || "Plan").slice(0, 40),
-      date: String(input?.date || "").slice(0, 10),
+      date,
+      timeSlot,
       createdBy: String(email || claims.sub || input?.createdBy || "unknown").slice(0, 200),
       done: Boolean(input?.done),
       updatedAt: new Date().toISOString(),
@@ -145,18 +157,56 @@ exports.handler = async (event) => {
   if (method === "PUT" && path.startsWith("/plans/")) {
     const planId = decodeURIComponent(path.slice("/plans/".length));
     if (!/^[a-zA-Z0-9_-]{1,100}$/.test(planId)) return json(400, { message: "Plan invalido." });
-    const body = parseBody(event.body);
+    const body = parseBody(event.body) || {};
+    const hasDone = Object.prototype.hasOwnProperty.call(body, "done");
+    const hasDate = Object.prototype.hasOwnProperty.call(body, "date");
+    const hasTimeSlot = Object.prototype.hasOwnProperty.call(body, "timeSlot");
+    if (!hasDone && !hasDate && !hasTimeSlot) {
+      return json(400, { message: "No hay cambios para aplicar al plan." });
+    }
+
+    const date = hasDate ? String(body.date || "").slice(0, 10) : "";
+    const timeSlot = hasTimeSlot ? normalizeTimeSlot(body.timeSlot) : "";
+    if (hasDate && date && !isValidPlanDate(date)) {
+      return json(400, { message: "La fecha del plan no es valida." });
+    }
+    if (hasTimeSlot && body.timeSlot && !timeSlot) {
+      return json(400, { message: "La franja del plan no es valida." });
+    }
+    if (hasTimeSlot && timeSlot && hasDate && !date) {
+      return json(400, { message: "Una franja horaria necesita una fecha." });
+    }
+
+    const updates = ["updatedAt = :updatedAt", "updatedBy = :updatedBy"];
+    const names = {};
+    const values = {
+      ":updatedAt": new Date().toISOString(),
+      ":updatedBy": email || claims.sub || "unknown"
+    };
+    if (hasDone) {
+      updates.push("#done = :done");
+      names["#done"] = "done";
+      values[":done"] = Boolean(body.done);
+    }
+    if (hasDate) {
+      updates.push("#date = :date");
+      names["#date"] = "date";
+      values[":date"] = date;
+    }
+    if (hasTimeSlot) {
+      updates.push("#timeSlot = :timeSlot");
+      names["#timeSlot"] = "timeSlot";
+      values[":timeSlot"] = timeSlot;
+    }
+
     try {
       const result = await client.send(new UpdateCommand({
         TableName: tableName,
         Key: { id: `${planPrefix}${planId}` },
         ConditionExpression: "attribute_exists(id)",
-        UpdateExpression: "SET done = :done, updatedAt = :updatedAt, updatedBy = :updatedBy",
-        ExpressionAttributeValues: {
-          ":done": Boolean(body?.done),
-          ":updatedAt": new Date().toISOString(),
-          ":updatedBy": email || claims.sub || "unknown"
-        },
+        UpdateExpression: `SET ${updates.join(", ")}`,
+        ...(Object.keys(names).length ? { ExpressionAttributeNames: names } : {}),
+        ExpressionAttributeValues: values,
         ReturnValues: "ALL_NEW"
       }));
       return json(200, { plan: toPlan(result.Attributes) });
@@ -348,9 +398,21 @@ function toPlan(item = {}) {
     title: item.title || "",
     category: item.category || "Plan",
     date: item.date || "",
+    timeSlot: normalizeTimeSlot(item.timeSlot),
     createdBy: item.createdBy || "",
     done: Boolean(item.done)
   };
+}
+
+function normalizeTimeSlot(value) {
+  const slot = String(value || "");
+  return ["morning", "afternoon", "night"].includes(slot) ? slot : "";
+}
+
+function isValidPlanDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T12:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 function safePlanId(value) {

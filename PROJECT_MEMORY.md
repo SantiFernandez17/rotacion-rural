@@ -1,6 +1,6 @@
 # Memoria del proyecto: Rotacion Rural
 
-Actualizada: 2026-07-26
+Actualizada: 2026-08-03
 
 ## Proposito
 
@@ -55,7 +55,7 @@ Los planes para la vuelta NO viven dentro de ese documento. Cada plan es un item
 rotacion-rural-plan#<id>
 ```
 
-La app usa `GET`, `POST`, `PUT` y `DELETE` sobre `/plans`. Esto evita que una copia vieja de un telefono pueda borrar toda la lista. El 2026-07-20 se migraron los 4 planes existentes a este formato.
+La app usa `GET`, `POST`, `PUT` y `DELETE` sobre `/plans`. Esto evita que una copia vieja de un telefono pueda borrar toda la lista. El 2026-07-20 se migraron los 4 planes existentes a este formato. Cada plan puede incluir `date` y `timeSlot` (`morning`, `afternoon` o `night`) para aparecer en la agenda de Merlo.
 
 Documentacion detallada de la base: `aws/DATABASE.md`.
 
@@ -95,7 +95,7 @@ Desde la raiz del repositorio:
 
 El script prepara `.cloudflare-deploy/` y publica el Worker `rotacion-rural-totoe`. No agregar esa carpeta al repositorio.
 
-Cada cambio visual que deba verse en la PWA debe aumentar `CACHE_NAME` en `rotacion-rural-app/service-worker.js`. La version actual es `rotacion-rural-v13`.
+Cada cambio visual que deba verse en la PWA debe aumentar `CACHE_NAME` en `rotacion-rural-app/service-worker.js`. La version actual es `rotacion-rural-v15`.
 
 ## Verificaciones utiles
 
@@ -104,6 +104,17 @@ Cada cambio visual que deba verse en la PWA debe aumentar `CACHE_NAME` en `rotac
 - Verificar stack: `aws cloudformation describe-stacks --stack-name sam-app --region us-east-1`.
 - Ver logs de notificaciones: revisar el grupo de logs de `NotificationFunction` en CloudWatch.
 - Probar la funcion desde la app con "Enviar prueba ahora" despues de que ambos dispositivos hayan activado notificaciones.
+- Probar la escritura del calendario con `node aws/scripts/smoke-calendar.js <ruta-al-state.js-con-dependencias>`. El script crea y elimina su propio plan temporal.
+
+## Agenda de Merlo del 2026-08-03
+
+- La navegacion inferior incluye `Merlo`, ademas de `Inicio` y `Mensajes`.
+- El calendario muestra los dias del 6 al 12 de agosto de 2026.
+- Cada plan pendiente puede asignarse a manana, tarde o noche. La fecha y la franja se guardan en el item independiente del plan, por lo que ambos usuarios ven la misma agenda.
+- Desde la agenda se puede marcar un plan como realizado o quitarlo del dia sin borrar la idea de la lista.
+- Backend AWS desplegado y verificado con una creacion, actualizacion y eliminacion temporal en DynamoDB.
+- Frontend verificado en 390x844 y 1280x900, sin desbordes ni errores de consola.
+- Frontend publicado en Cloudflare con la version `d4f28678-8d75-46eb-820e-9c2acd617857`.
 
 ## Estado al 2026-07-21
 

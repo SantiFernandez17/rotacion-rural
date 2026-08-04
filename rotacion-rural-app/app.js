@@ -5,6 +5,11 @@ const ROTATION_END_DATE = "2026-08-28";
 const NEXT_COUNTDOWN_DATE = "2026-08-06";
 const PLAN_WINDOW_START = "2026-08-06";
 const PLAN_WINDOW_END = "2026-08-12";
+const PLAN_TIME_SLOTS = [
+  { id: "morning", label: "Mañana", hours: "9:00 a 13:00", icon: "☀" },
+  { id: "afternoon", label: "Tarde", hours: "13:00 a 19:00", icon: "◐" },
+  { id: "night", label: "Noche", hours: "Desde las 19:00", icon: "☾" }
+];
 const awsConfig = window.ROTACION_AWS_CONFIG || { enabled: false };
 
 const seedData = {
@@ -68,6 +73,7 @@ let state = loadState();
 let activeTab = "home";
 let checklistFilter = "all";
 let planFilter = "pending";
+let selectedVisitDate = defaultVisitDate();
 let cloudStatus = {
   enabled: Boolean(awsConfig.enabled),
   signedIn: false,
@@ -135,7 +141,7 @@ function agenda(date, time, title, place, type, notes) {
 }
 
 function plan(title, category, date, createdBy) {
-  return { id: uid(), title, category, date, createdBy, done: false };
+  return { id: uid(), title, category, date, timeSlot: "", createdBy, done: false };
 }
 
 function uid() {
@@ -174,7 +180,9 @@ function normalizeState(value) {
   };
 
   normalized.profile.endDate = ROTATION_END_DATE;
-  normalized.plans = Array.isArray(normalized.plans) ? normalized.plans : [];
+  normalized.plans = Array.isArray(normalized.plans)
+    ? normalized.plans.map((entry) => ({ ...entry, timeSlot: normalizeTimeSlot(entry.timeSlot) }))
+    : [];
   return normalized;
 }
 
@@ -186,7 +194,8 @@ function render() {
     love: renderLove,
     contacts: renderContacts,
     agenda: renderAgenda,
-    plans: renderPlans
+    plans: renderPlans,
+    calendar: renderVisitCalendar
   };
 
   app.innerHTML = views[activeTab]();
@@ -231,14 +240,17 @@ function renderDashboardWidgets() {
             <span class="widget-label">Planes para la vuelta</span>
             <h3>${pendingPlans.length ? `${pendingPlans.length} ${pendingPlans.length === 1 ? "idea pendiente" : "ideas pendientes"}` : "Empiecen a imaginar la vuelta"}</h3>
           </div>
-          <button class="button secondary" data-go="plans">Ver todos</button>
+          <div class="home-card-actions">
+            <button class="button" data-go="calendar">Armar agenda</button>
+            <button class="button secondary" data-go="plans">Ver planes</button>
+          </div>
         </div>
         ${
           planPreview.length
             ? `<div class="home-plan-list">${planPreview.map((entry) => `
                 <div class="home-plan-row">
                   <span class="home-plan-marker" aria-hidden="true"></span>
-                  <div><strong>${escapeHtml(entry.title)}</strong><small>${entry.date ? formatDate(entry.date) : escapeHtml(entry.category || "Plan sin fecha")}</small></div>
+                  <div><strong>${escapeHtml(entry.title)}</strong><small>${escapeHtml(formatPlanSchedule(entry))}</small></div>
                 </div>
               `).join("")}</div>`
             : `<div class="home-empty-plans"><p>Guarden salidas, comidas, viajes y sorpresas para cuando termine la rotación.</p><button class="button" data-go="plans">Agregar el primer plan</button></div>`
@@ -307,6 +319,87 @@ function renderPlans() {
   `;
 }
 
+function renderVisitCalendar() {
+  const visitDates = getVisitDates();
+  const selectablePlans = state.plans
+    .filter((entry) => !entry.done)
+    .sort((a, b) => a.title.localeCompare(b.title, "es"));
+  const scheduledForDay = state.plans.filter((entry) => entry.date === selectedVisitDate && entry.timeSlot);
+
+  return `
+    <div class="view-back"><button class="icon-button" data-go="home" aria-label="Volver al inicio" title="Volver al inicio">&#8592;</button></div>
+    ${sectionHead("Agenda en Merlo", "Elijan un día y acomoden los planes compartidos entre mañana, tarde y noche.")}
+    ${!cloudStatus.signedIn ? renderCloudPanel() : ""}
+    <nav class="calendar-days" aria-label="Días de la visita">
+      ${visitDates.map((date) => `
+        <button type="button" class="calendar-day ${date === selectedVisitDate ? "is-active" : ""}" data-calendar-date="${date}" aria-pressed="${date === selectedVisitDate}">
+          <span>${formatVisitWeekday(date)}</span>
+          <strong>${formatVisitDay(date)}</strong>
+        </button>
+      `).join("")}
+    </nav>
+    <section class="calendar-summary">
+      <div>
+        <span class="widget-label">Día elegido</span>
+        <h3>${formatLongDate(selectedVisitDate)}</h3>
+        <p>${scheduledForDay.length ? `${scheduledForDay.length} ${scheduledForDay.length === 1 ? "plan organizado" : "planes organizados"}` : "Todavía no organizaron este día."}</p>
+      </div>
+      <form data-form="calendar" class="calendar-assigner">
+        <label class="field">Plan
+          <select name="planId" required ${selectablePlans.length ? "" : "disabled"}>
+            <option value="">Elegí un plan</option>
+            ${selectablePlans.map((entry) => `<option value="${escapeAttr(entry.id)}">${escapeHtml(entry.title)}${entry.timeSlot ? ` · ${escapeHtml(formatPlanSchedule(entry))}` : ""}</option>`).join("")}
+          </select>
+        </label>
+        <label class="field">Momento
+          <select name="timeSlot" required ${selectablePlans.length ? "" : "disabled"}>
+            ${PLAN_TIME_SLOTS.map((slot) => `<option value="${slot.id}">${slot.label}</option>`).join("")}
+          </select>
+        </label>
+        <button class="button" type="submit" ${selectablePlans.length && cloudStatus.signedIn ? "" : "disabled"}>Sumar al día</button>
+      </form>
+      ${selectablePlans.length ? "" : `<div class="calendar-empty-action"><p>Primero agreguen una idea a la lista de planes.</p><button class="button secondary" data-go="plans">Ir a planes</button></div>`}
+    </section>
+    <section class="calendar-slots" aria-label="Agenda del ${escapeAttr(selectedVisitDate)}">
+      ${PLAN_TIME_SLOTS.map((slot) => renderCalendarSlot(slot)).join("")}
+    </section>
+  `;
+}
+
+function renderCalendarSlot(slot) {
+  const entries = state.plans
+    .filter((entry) => entry.date === selectedVisitDate && entry.timeSlot === slot.id)
+    .sort((a, b) => Number(a.done) - Number(b.done) || a.title.localeCompare(b.title, "es"));
+
+  return `
+    <section class="calendar-slot calendar-slot--${slot.id}">
+      <header class="calendar-slot__head">
+        <span class="calendar-slot__icon" aria-hidden="true">${slot.icon}</span>
+        <div><h3>${slot.label}</h3><p>${slot.hours}</p></div>
+        <span class="calendar-slot__count">${entries.length}</span>
+      </header>
+      <div class="calendar-slot__plans">
+        ${entries.length ? entries.map(renderCalendarPlan).join("") : `<p class="calendar-slot__empty">Este momento está libre.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderCalendarPlan(entry) {
+  return `
+    <article class="calendar-plan ${entry.done ? "done" : ""}">
+      <div>
+        <span>${escapeHtml(entry.category || "Plan")}</span>
+        <strong>${escapeHtml(entry.title)}</strong>
+      </div>
+      <div class="calendar-plan__actions">
+        <button class="icon-button" data-toggle-plan="${entry.id}" aria-label="${entry.done ? "Marcar pendiente" : "Marcar realizado"}" title="${entry.done ? "Marcar pendiente" : "Marcar realizado"}">${entry.done ? "&#8634;" : "&#10003;"}</button>
+        <button class="icon-button danger" data-unschedule-plan="${entry.id}" aria-label="Quitar de este día" title="Quitar de este día">&#215;</button>
+      </div>
+    </article>
+  `;
+}
+
 function renderPlan(entry) {
   return `
     <article class="card entry plan-item ${entry.done ? "done" : ""}">
@@ -318,7 +411,7 @@ function renderPlan(entry) {
         </div>
       </div>
       <h3>${escapeHtml(entry.title)}</h3>
-      <p>${entry.date ? formatDate(entry.date) : "Sin fecha definida"}<br>${escapeHtml(planAuthor(entry.createdBy))}</p>
+      <p>${escapeHtml(formatPlanSchedule(entry))}<br>${escapeHtml(planAuthor(entry.createdBy))}</p>
     </article>
   `;
 }
@@ -694,6 +787,11 @@ function handleSubmit(event) {
     return;
   }
 
+  if (form.dataset.form === "calendar") {
+    schedulePlanInCloud(data.planId, selectedVisitDate, data.timeSlot);
+    return;
+  }
+
   saveState(form.dataset.form === "message" ? "El mensaje se cargó correctamente en la base de datos." : "");
   form.reset();
   render();
@@ -747,6 +845,17 @@ function handleClick(event) {
   if (target.dataset.planFilter) {
     planFilter = target.dataset.planFilter;
     render();
+    return;
+  }
+
+  if (target.dataset.calendarDate) {
+    selectedVisitDate = target.dataset.calendarDate;
+    render();
+    return;
+  }
+
+  if (target.dataset.unschedulePlan) {
+    schedulePlanInCloud(target.dataset.unschedulePlan, "", "");
     return;
   }
 
@@ -895,6 +1004,56 @@ function formatDate(value) {
   }).format(new Date(`${value}T00:00:00`));
 }
 
+function defaultVisitDate() {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+  if (today < PLAN_WINDOW_START) return PLAN_WINDOW_START;
+  if (today > PLAN_WINDOW_END) return PLAN_WINDOW_END;
+  return today;
+}
+
+function getVisitDates() {
+  const dates = [];
+  const cursor = new Date(`${PLAN_WINDOW_START}T12:00:00Z`);
+  const end = new Date(`${PLAN_WINDOW_END}T12:00:00Z`);
+  while (cursor <= end) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+function formatVisitWeekday(value) {
+  return new Intl.DateTimeFormat("es-AR", { weekday: "short", timeZone: "UTC" })
+    .format(new Date(`${value}T12:00:00Z`))
+    .replace(".", "");
+}
+
+function formatVisitDay(value) {
+  return new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "short", timeZone: "UTC" })
+    .format(new Date(`${value}T12:00:00Z`))
+    .replace(".", "");
+}
+
+function normalizeTimeSlot(value) {
+  const slot = String(value || "");
+  return PLAN_TIME_SLOTS.some((entry) => entry.id === slot) ? slot : "";
+}
+
+function timeSlotLabel(value) {
+  return PLAN_TIME_SLOTS.find((entry) => entry.id === value)?.label || "";
+}
+
+function formatPlanSchedule(entry) {
+  if (!entry.date) return entry.category || "Plan sin fecha";
+  const slot = timeSlotLabel(entry.timeSlot);
+  return `${formatDate(entry.date)}${slot ? ` · ${slot}` : ""}`;
+}
+
 function cleanPhone(value = "") {
   return value.replace(/[^\d+]/g, "");
 }
@@ -994,6 +1153,37 @@ async function togglePlanInCloud(planId) {
   const entry = state.plans.find((item) => item.id === planId);
   if (!entry) return;
 
+  await updatePlanInCloud(
+    planId,
+    { done: !entry.done },
+    "El plan se actualizó correctamente en la base de datos."
+  );
+}
+
+async function schedulePlanInCloud(planId, date, timeSlot) {
+  if (!planId) return;
+  if (date && !getVisitDates().includes(date)) {
+    cloudStatus.error = "Elegí un día válido de la visita.";
+    render();
+    return;
+  }
+  if (timeSlot && !normalizeTimeSlot(timeSlot)) {
+    cloudStatus.error = "Elegí mañana, tarde o noche.";
+    render();
+    return;
+  }
+
+  await updatePlanInCloud(
+    planId,
+    { date, timeSlot: normalizeTimeSlot(timeSlot) },
+    date ? "El plan se agregó a la agenda compartida." : "El plan se quitó de la agenda compartida."
+  );
+}
+
+async function updatePlanInCloud(planId, changes, successMessage) {
+  const entry = state.plans.find((item) => item.id === planId);
+  if (!entry) return;
+
   const token = await getValidIdToken();
   if (!token) {
     cloudStatus.error = "Inicia sesion para actualizar el plan compartido.";
@@ -1006,13 +1196,13 @@ async function togglePlanInCloud(planId) {
     const response = await fetch(`${trimSlash(awsConfig.apiBaseUrl)}/plans/${encodeURIComponent(planId)}`, {
       method: "PUT",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify({ done: !entry.done })
+      body: JSON.stringify(changes)
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.message || "No se pudo actualizar el plan.");
     state.plans = state.plans.map((item) => item.id === planId ? result.plan : item);
     savePlansLocally();
-    showDatabaseSuccess("El plan se actualizó correctamente en la base de datos.");
+    showDatabaseSuccess(successMessage);
   } catch (error) {
     cloudStatus.error = error.message || "No se pudo actualizar el plan.";
   }

@@ -16,7 +16,7 @@ Rama que se usa directamente para publicar: main.
 Primero lee PROJECT_MEMORY.md y, si vas a tocar AWS/DynamoDB, tambien aws/DATABASE.md.
 
 Que es la pagina:
-Es una PWA privada para que una pareja comparta informacion durante una rotacion rural en Santiago del Estero. Tiene diario, mensajes, agenda, contactos de emergencia, cuenta regresiva, planes para la vuelta, login por email, sincronizacion AWS y notificaciones Web Push.
+Es una PWA privada para que una pareja comparta informacion durante una rotacion rural en Santiago del Estero. Tiene diario, mensajes, agenda, contactos de emergencia, cuenta regresiva, planes para la vuelta, calendario de la visita a Merlo, login por email, sincronizacion AWS y notificaciones Web Push.
 
 Sitio:
 https://rotacion-rural.santuli.org/
@@ -41,6 +41,7 @@ iPhone/navegador -> Cloudflare Access -> PWA en Cloudflare Worker -> Cognito -> 
 Datos:
 - El estado general compartido esta en DynamoDB, item rotacion-rural-main.
 - Los planes para la vuelta son items independientes: rotacion-rural-plan#<id>.
+- La agenda de Merlo reutiliza esos planes y guarda `date` mas `timeSlot` (`morning`, `afternoon` o `night`) en cada item.
 - No volver a guardar plans dentro del documento general; asi se evita que una copia vieja borre la lista completa.
 
 Notificaciones:
@@ -71,12 +72,14 @@ Como trabajar y publicar:
 No usar git reset --hard, git checkout -- ni borrar datos de DynamoDB sin una instruccion explicita.
 No exponer tokens, contrasenas ni claves VAPID privadas en el chat, commits o documentos.
 
-Estado conocido al 2026-07-26:
+Estado conocido al 2026-08-03:
 - Los mensajes diarios, las cartas compartidas y los planes muestran un cartel solamente despues de que AWS confirma el guardado.
 - La portada usa un tema oscuro y muestra cuenta regresiva, ultimo mensaje recibido, planes pendientes y el formulario para programar el mensaje diario.
-- La navegacion inferior conserva solamente Inicio y Mensajes; Diario, SOS y Agenda siguen en los datos historicos pero ya no tienen pestanas.
+- La navegacion inferior muestra Inicio, Merlo y Mensajes. Diario, SOS y Agenda de rotacion siguen en los datos historicos pero ya no tienen pestanas.
+- Merlo permite organizar los planes compartidos del 6 al 12 de agosto de 2026, divididos en manana, tarde y noche.
+- Frontend del calendario publicado en Cloudflare con la version d4f28678-8d75-46eb-820e-9c2acd617857.
 - Frontend publicado en Cloudflare con la version f13e157c-d232-4851-a31c-228f26608f51.
-- Cache PWA actual: rotacion-rural-v13.
+- Cache PWA actual: rotacion-rural-v15.
 - El despliegue de Cloudflare usa wrangler.jsonc con assets.directory; no volver a pasar la carpeta como argumento interactivo de wrangler deploy.
 - Stack AWS: sam-app, region us-east-1.
 - Tabla DynamoDB: rotacion-rural-state.
